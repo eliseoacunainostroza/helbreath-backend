@@ -27,6 +27,238 @@ pub const OPCODE_GUILD_CHAT: u16 = 0x0202;
 pub const OPCODE_HEARTBEAT: u16 = 0x02FE;
 pub const OPCODE_LOGOUT: u16 = 0x02FF;
 
+pub const S_OPCODE_LOGIN_RESULT: u16 = 0x8001;
+pub const S_OPCODE_CHARACTER_LIST_RESULT: u16 = 0x8002;
+pub const S_OPCODE_CHARACTER_CREATE_RESULT: u16 = 0x8003;
+pub const S_OPCODE_CHARACTER_SELECT_RESULT: u16 = 0x8004;
+pub const S_OPCODE_ENTER_WORLD_RESULT: u16 = 0x8005;
+pub const S_OPCODE_CHARACTER_DELETE_RESULT: u16 = 0x8006;
+pub const S_OPCODE_MOVE_RESULT: u16 = 0x8100;
+pub const S_OPCODE_ATTACK_RESULT: u16 = 0x8101;
+pub const S_OPCODE_CAST_SKILL_RESULT: u16 = 0x8102;
+pub const S_OPCODE_PICKUP_ITEM_RESULT: u16 = 0x8103;
+pub const S_OPCODE_DROP_ITEM_RESULT: u16 = 0x8104;
+pub const S_OPCODE_USE_ITEM_RESULT: u16 = 0x8105;
+pub const S_OPCODE_NPC_INTERACTION_RESULT: u16 = 0x8106;
+pub const S_OPCODE_CHAT_BROADCAST: u16 = 0x8200;
+pub const S_OPCODE_WHISPER_BROADCAST: u16 = 0x8201;
+pub const S_OPCODE_GUILD_CHAT_BROADCAST: u16 = 0x8202;
+pub const S_OPCODE_HEARTBEAT_ACK: u16 = 0x82FE;
+pub const S_OPCODE_LOGOUT_ACK: u16 = 0x82FF;
+pub const S_OPCODE_ERROR: u16 = 0x8FFF;
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[repr(u16)]
+pub enum WireErrorCode {
+    Ok = 0,
+    InvalidCredentials = 1,
+    SessionExpired = 2,
+    CharacterNotFound = 3,
+    InventoryFull = 4,
+    TargetNotFound = 5,
+    PermissionDenied = 6,
+    RateLimited = 7,
+    InvalidPayload = 8,
+    InvalidSessionState = 9,
+    InternalServerError = 500,
+    Unknown = 0xFFFF,
+}
+
+impl WireErrorCode {
+    pub const fn as_u16(self) -> u16 {
+        self as u16
+    }
+
+    pub const fn from_u16(raw: u16) -> Self {
+        match raw {
+            0 => Self::Ok,
+            1 => Self::InvalidCredentials,
+            2 => Self::SessionExpired,
+            3 => Self::CharacterNotFound,
+            4 => Self::InventoryFull,
+            5 => Self::TargetNotFound,
+            6 => Self::PermissionDenied,
+            7 => Self::RateLimited,
+            8 => Self::InvalidPayload,
+            9 => Self::InvalidSessionState,
+            500 => Self::InternalServerError,
+            _ => Self::Unknown,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ServerOpcodeMatrix {
+    pub login_result: u16,
+    pub character_list_result: u16,
+    pub character_create_result: u16,
+    pub character_delete_result: u16,
+    pub character_select_result: u16,
+    pub enter_world_result: u16,
+    pub move_result: u16,
+    pub attack_result: u16,
+    pub cast_skill_result: u16,
+    pub pickup_item_result: u16,
+    pub drop_item_result: u16,
+    pub use_item_result: u16,
+    pub npc_interaction_result: u16,
+    pub chat_broadcast: u16,
+    pub whisper_broadcast: u16,
+    pub guild_chat_broadcast: u16,
+    pub heartbeat_ack: u16,
+    pub logout_ack: u16,
+    pub error: u16,
+}
+
+impl ServerOpcodeMatrix {
+    pub const fn legacy_v382() -> Self {
+        Self {
+            login_result: S_OPCODE_LOGIN_RESULT,
+            character_list_result: S_OPCODE_CHARACTER_LIST_RESULT,
+            character_create_result: S_OPCODE_CHARACTER_CREATE_RESULT,
+            character_delete_result: S_OPCODE_CHARACTER_DELETE_RESULT,
+            character_select_result: S_OPCODE_CHARACTER_SELECT_RESULT,
+            enter_world_result: S_OPCODE_ENTER_WORLD_RESULT,
+            move_result: S_OPCODE_MOVE_RESULT,
+            attack_result: S_OPCODE_ATTACK_RESULT,
+            cast_skill_result: S_OPCODE_CAST_SKILL_RESULT,
+            pickup_item_result: S_OPCODE_PICKUP_ITEM_RESULT,
+            drop_item_result: S_OPCODE_DROP_ITEM_RESULT,
+            use_item_result: S_OPCODE_USE_ITEM_RESULT,
+            npc_interaction_result: S_OPCODE_NPC_INTERACTION_RESULT,
+            chat_broadcast: S_OPCODE_CHAT_BROADCAST,
+            whisper_broadcast: S_OPCODE_WHISPER_BROADCAST,
+            guild_chat_broadcast: S_OPCODE_GUILD_CHAT_BROADCAST,
+            heartbeat_ack: S_OPCODE_HEARTBEAT_ACK,
+            logout_ack: S_OPCODE_LOGOUT_ACK,
+            error: S_OPCODE_ERROR,
+        }
+    }
+
+    pub const fn modern_v400() -> Self {
+        Self::legacy_v382()
+    }
+
+    pub const fn for_version(version: ProtocolVersion) -> Self {
+        match version {
+            ProtocolVersion::LegacyV382 => Self::legacy_v382(),
+            ProtocolVersion::ModernV400 => Self::modern_v400(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ServerMessage {
+    LoginResult {
+        accepted: bool,
+        code: WireErrorCode,
+        message: Option<String>,
+    },
+    CharacterListResult {
+        count: u16,
+    },
+    CharacterCreateResult {
+        code: WireErrorCode,
+        character_id: Option<Uuid>,
+    },
+    CharacterDeleteResult {
+        code: WireErrorCode,
+        character_id: Option<Uuid>,
+    },
+    CharacterSelectResult {
+        code: WireErrorCode,
+        character_id: Option<Uuid>,
+        map_id: Option<i32>,
+        x: Option<i32>,
+        y: Option<i32>,
+    },
+    EnterWorldResult {
+        code: WireErrorCode,
+        map_id: Option<i32>,
+        x: Option<i32>,
+        y: Option<i32>,
+    },
+    MoveResult {
+        x: i32,
+        y: i32,
+    },
+    AttackResult {
+        target_id: Uuid,
+        damage: i32,
+        defeated: bool,
+    },
+    CastSkillResult {
+        skill_id: i32,
+        target_id: Option<Uuid>,
+        ok: bool,
+    },
+    PickupItemResult {
+        entity_id: Uuid,
+        ok: bool,
+    },
+    DropItemResult {
+        slot: i32,
+        quantity: i32,
+        ok: bool,
+    },
+    UseItemResult {
+        slot: i32,
+        ok: bool,
+    },
+    NpcInteractionResult {
+        npc_id: Uuid,
+        payload: Option<String>,
+    },
+    ChatBroadcast {
+        from: String,
+        message: String,
+    },
+    WhisperBroadcast {
+        from: String,
+        message: String,
+    },
+    GuildChatBroadcast {
+        from: String,
+        message: String,
+    },
+    HeartbeatAck,
+    LogoutAck,
+    Error {
+        code: WireErrorCode,
+        message: Option<String>,
+    },
+}
+
+#[derive(Debug, Error)]
+pub enum ServerTranslateError {
+    #[error("unknown server opcode 0x{0:04X}")]
+    UnknownOpcode(u16),
+    #[error("invalid server payload: {0}")]
+    InvalidPayload(&'static str),
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct WireCodecOptions {
+    pub compression: bool,
+    pub obfuscation_seed: Option<u8>,
+}
+
+#[derive(Debug, Error)]
+pub enum WireCodecError {
+    #[error("compression stream is malformed")]
+    MalformedCompressionStream,
+    #[error("decompressed payload too large")]
+    DecompressedPayloadTooLarge,
+}
+
+#[derive(Debug, Error)]
+pub enum WireDecodeError {
+    #[error(transparent)]
+    Frame(#[from] DecodeError),
+    #[error(transparent)]
+    Codec(#[from] WireCodecError),
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ProtocolVersion {
     LegacyV382,
@@ -310,6 +542,180 @@ pub fn translate_packet_for_version(
     Ok(cmd)
 }
 
+pub fn translate_server_packet(
+    packet: &DecodedPacket,
+) -> Result<ServerMessage, ServerTranslateError> {
+    translate_server_packet_for_version(packet, ProtocolVersion::LegacyV382)
+}
+
+pub fn translate_server_packet_for_version(
+    packet: &DecodedPacket,
+    version: ProtocolVersion,
+) -> Result<ServerMessage, ServerTranslateError> {
+    let op = ServerOpcodeMatrix::for_version(version);
+
+    let msg = match packet.header.opcode {
+        x if x == op.login_result => parse_login_result(&packet.payload)?,
+        x if x == op.character_list_result => ServerMessage::CharacterListResult {
+            count: parse_u16_at(&packet.payload, 0, "character_list_result requires count")?,
+        },
+        x if x == op.character_create_result => parse_character_create_result(&packet.payload)?,
+        x if x == op.character_delete_result => parse_character_delete_result(&packet.payload)?,
+        x if x == op.character_select_result => parse_character_select_result(&packet.payload)?,
+        x if x == op.enter_world_result => parse_enter_world_result(&packet.payload)?,
+        x if x == op.move_result => ServerMessage::MoveResult {
+            x: parse_i32_at(&packet.payload, 0, "move_result requires x,y")?,
+            y: parse_i32_at(&packet.payload, 4, "move_result requires x,y")?,
+        },
+        x if x == op.attack_result => parse_attack_result(&packet.payload)?,
+        x if x == op.cast_skill_result => parse_cast_skill_result(&packet.payload)?,
+        x if x == op.pickup_item_result => parse_pickup_item_result(&packet.payload)?,
+        x if x == op.drop_item_result => parse_drop_item_result(&packet.payload)?,
+        x if x == op.use_item_result => parse_use_item_result(&packet.payload)?,
+        x if x == op.npc_interaction_result => parse_npc_interaction_result(&packet.payload)?,
+        x if x == op.chat_broadcast => {
+            let (from, message) = parse_sender_and_message(&packet.payload)?;
+            ServerMessage::ChatBroadcast { from, message }
+        }
+        x if x == op.whisper_broadcast => {
+            let (from, message) = parse_sender_and_message(&packet.payload)?;
+            ServerMessage::WhisperBroadcast { from, message }
+        }
+        x if x == op.guild_chat_broadcast => {
+            let (from, message) = parse_sender_and_message(&packet.payload)?;
+            ServerMessage::GuildChatBroadcast { from, message }
+        }
+        x if x == op.heartbeat_ack => ServerMessage::HeartbeatAck,
+        x if x == op.logout_ack => ServerMessage::LogoutAck,
+        x if x == op.error => parse_error_result(&packet.payload)?,
+        other => return Err(ServerTranslateError::UnknownOpcode(other)),
+    };
+
+    Ok(msg)
+}
+
+pub fn parse_wire_error_code(raw: u16) -> WireErrorCode {
+    WireErrorCode::from_u16(raw)
+}
+
+pub fn obfuscate_wire_payload(payload: &[u8], seed: u8) -> Vec<u8> {
+    payload
+        .iter()
+        .enumerate()
+        .map(|(idx, byte)| {
+            let key = seed.wrapping_add((idx as u8).wrapping_mul(31));
+            byte ^ key
+        })
+        .collect()
+}
+
+pub fn deobfuscate_wire_payload(payload: &[u8], seed: u8) -> Vec<u8> {
+    // XOR stream is symmetric.
+    obfuscate_wire_payload(payload, seed)
+}
+
+pub fn compress_wire_payload(payload: &[u8]) -> Vec<u8> {
+    if payload.is_empty() {
+        return Vec::new();
+    }
+
+    let mut out = Vec::with_capacity(payload.len());
+    let mut idx = 0usize;
+    while idx < payload.len() {
+        let byte = payload[idx];
+        let mut run = 1usize;
+        while idx + run < payload.len() && payload[idx + run] == byte && run < 255 {
+            run += 1;
+        }
+
+        if run >= 4 || byte == 0xFF {
+            out.push(0xFF);
+            out.push(run as u8);
+            out.push(byte);
+        } else {
+            for _ in 0..run {
+                out.push(byte);
+            }
+        }
+        idx += run;
+    }
+    out
+}
+
+pub fn decompress_wire_payload(
+    payload: &[u8],
+    max_output: usize,
+) -> Result<Vec<u8>, WireCodecError> {
+    let mut out = Vec::with_capacity(payload.len());
+    let mut idx = 0usize;
+    while idx < payload.len() {
+        if payload[idx] != 0xFF {
+            out.push(payload[idx]);
+            if out.len() > max_output {
+                return Err(WireCodecError::DecompressedPayloadTooLarge);
+            }
+            idx += 1;
+            continue;
+        }
+
+        if idx + 2 >= payload.len() {
+            return Err(WireCodecError::MalformedCompressionStream);
+        }
+        let count = payload[idx + 1] as usize;
+        let value = payload[idx + 2];
+        if count == 0 {
+            return Err(WireCodecError::MalformedCompressionStream);
+        }
+        if out.len().saturating_add(count) > max_output {
+            return Err(WireCodecError::DecompressedPayloadTooLarge);
+        }
+        for _ in 0..count {
+            out.push(value);
+        }
+        idx += 3;
+    }
+
+    Ok(out)
+}
+
+pub fn encode_wire_frame(opcode: u16, payload: &[u8], options: WireCodecOptions) -> Vec<u8> {
+    let mut encoded_payload = payload.to_vec();
+    if options.compression {
+        encoded_payload = compress_wire_payload(&encoded_payload);
+    }
+    if let Some(seed) = options.obfuscation_seed {
+        encoded_payload = obfuscate_wire_payload(&encoded_payload, seed);
+    }
+    encode_frame(opcode, &encoded_payload)
+}
+
+pub fn decode_wire_frame(
+    frame: &[u8],
+    max_payload: usize,
+    options: WireCodecOptions,
+) -> Result<DecodedPacket, WireDecodeError> {
+    let decoded = decode_frame(frame, max_payload)?;
+    let mut payload = decoded.payload;
+
+    if let Some(seed) = options.obfuscation_seed {
+        payload = deobfuscate_wire_payload(&payload, seed);
+    }
+    if options.compression {
+        payload = decompress_wire_payload(&payload, max_payload)?;
+    }
+    if payload.len() > max_payload {
+        return Err(WireCodecError::DecompressedPayloadTooLarge.into());
+    }
+
+    Ok(DecodedPacket {
+        header: PacketHeader {
+            length: (2 + payload.len()) as u16,
+            opcode: decoded.header.opcode,
+        },
+        payload,
+    })
+}
+
 pub struct TokenBucketRateLimiter {
     rate_per_sec: f64,
     burst: f64,
@@ -366,6 +772,300 @@ pub fn split_frames(buffer: &mut BytesMut) -> Vec<Vec<u8>> {
     }
 
     frames
+}
+
+fn parse_u16_at(
+    payload: &[u8],
+    offset: usize,
+    err: &'static str,
+) -> Result<u16, ServerTranslateError> {
+    if payload.len() < offset + 2 {
+        return Err(ServerTranslateError::InvalidPayload(err));
+    }
+    Ok(u16::from_le_bytes([payload[offset], payload[offset + 1]]))
+}
+
+fn parse_i32_at(
+    payload: &[u8],
+    offset: usize,
+    err: &'static str,
+) -> Result<i32, ServerTranslateError> {
+    if payload.len() < offset + 4 {
+        return Err(ServerTranslateError::InvalidPayload(err));
+    }
+    Ok(i32::from_le_bytes([
+        payload[offset],
+        payload[offset + 1],
+        payload[offset + 2],
+        payload[offset + 3],
+    ]))
+}
+
+fn parse_uuid_at(
+    payload: &[u8],
+    offset: usize,
+    err: &'static str,
+) -> Result<Uuid, ServerTranslateError> {
+    if payload.len() < offset + 16 {
+        return Err(ServerTranslateError::InvalidPayload(err));
+    }
+    let mut raw = [0_u8; 16];
+    raw.copy_from_slice(&payload[offset..offset + 16]);
+    Ok(Uuid::from_bytes(raw))
+}
+
+fn parse_bool_at(
+    payload: &[u8],
+    offset: usize,
+    err: &'static str,
+) -> Result<bool, ServerTranslateError> {
+    if payload.len() <= offset {
+        return Err(ServerTranslateError::InvalidPayload(err));
+    }
+    Ok(payload[offset] != 0)
+}
+
+fn bytes_to_optional_server_string(
+    input: &[u8],
+    max: usize,
+) -> Result<Option<String>, ServerTranslateError> {
+    let zero_terminated = input.split(|b| *b == 0).next().unwrap_or(input);
+    let text = std::str::from_utf8(zero_terminated)
+        .map_err(|_| ServerTranslateError::InvalidPayload("server payload is not utf8"))?
+        .trim()
+        .to_string();
+    if text.len() > max {
+        return Err(ServerTranslateError::InvalidPayload(
+            "server text payload too long",
+        ));
+    }
+    if text.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(text))
+    }
+}
+
+fn parse_login_result(payload: &[u8]) -> Result<ServerMessage, ServerTranslateError> {
+    if payload.len() < 3 {
+        return Err(ServerTranslateError::InvalidPayload(
+            "login_result requires accepted + code",
+        ));
+    }
+    let accepted = payload[0] != 0;
+    let code = parse_wire_error_code(u16::from_le_bytes([payload[1], payload[2]]));
+    let message = if payload.len() > 3 {
+        bytes_to_optional_server_string(&payload[3..], 160)?
+    } else {
+        None
+    };
+    Ok(ServerMessage::LoginResult {
+        accepted,
+        code,
+        message,
+    })
+}
+
+fn parse_character_create_result(payload: &[u8]) -> Result<ServerMessage, ServerTranslateError> {
+    let code = parse_wire_error_code(parse_u16_at(
+        payload,
+        0,
+        "character_create_result requires code",
+    )?);
+    let character_id = if payload.len() >= 18 {
+        Some(parse_uuid_at(
+            payload,
+            2,
+            "character_create_result invalid character_id",
+        )?)
+    } else {
+        None
+    };
+    Ok(ServerMessage::CharacterCreateResult { code, character_id })
+}
+
+fn parse_character_delete_result(payload: &[u8]) -> Result<ServerMessage, ServerTranslateError> {
+    let code = parse_wire_error_code(parse_u16_at(
+        payload,
+        0,
+        "character_delete_result requires code",
+    )?);
+    let character_id = if payload.len() >= 18 {
+        Some(parse_uuid_at(
+            payload,
+            2,
+            "character_delete_result invalid character_id",
+        )?)
+    } else {
+        None
+    };
+    Ok(ServerMessage::CharacterDeleteResult { code, character_id })
+}
+
+fn parse_character_select_result(payload: &[u8]) -> Result<ServerMessage, ServerTranslateError> {
+    let code = parse_wire_error_code(parse_u16_at(
+        payload,
+        0,
+        "character_select_result requires code",
+    )?);
+    let character_id = if payload.len() >= 18 {
+        Some(parse_uuid_at(
+            payload,
+            2,
+            "character_select_result invalid character_id",
+        )?)
+    } else {
+        None
+    };
+    let map_id = if payload.len() >= 22 {
+        Some(parse_i32_at(
+            payload,
+            18,
+            "character_select_result invalid map_id",
+        )?)
+    } else {
+        None
+    };
+    let x = if payload.len() >= 26 {
+        Some(parse_i32_at(
+            payload,
+            22,
+            "character_select_result invalid x",
+        )?)
+    } else {
+        None
+    };
+    let y = if payload.len() >= 30 {
+        Some(parse_i32_at(
+            payload,
+            26,
+            "character_select_result invalid y",
+        )?)
+    } else {
+        None
+    };
+    Ok(ServerMessage::CharacterSelectResult {
+        code,
+        character_id,
+        map_id,
+        x,
+        y,
+    })
+}
+
+fn parse_enter_world_result(payload: &[u8]) -> Result<ServerMessage, ServerTranslateError> {
+    let code = parse_wire_error_code(parse_u16_at(
+        payload,
+        0,
+        "enter_world_result requires code",
+    )?);
+    let map_id = if payload.len() >= 6 {
+        Some(parse_i32_at(
+            payload,
+            2,
+            "enter_world_result invalid map_id",
+        )?)
+    } else {
+        None
+    };
+    let x = if payload.len() >= 10 {
+        Some(parse_i32_at(payload, 6, "enter_world_result invalid x")?)
+    } else {
+        None
+    };
+    let y = if payload.len() >= 14 {
+        Some(parse_i32_at(payload, 10, "enter_world_result invalid y")?)
+    } else {
+        None
+    };
+    Ok(ServerMessage::EnterWorldResult { code, map_id, x, y })
+}
+
+fn parse_attack_result(payload: &[u8]) -> Result<ServerMessage, ServerTranslateError> {
+    Ok(ServerMessage::AttackResult {
+        target_id: parse_uuid_at(payload, 0, "attack_result requires target_id")?,
+        damage: parse_i32_at(payload, 16, "attack_result requires damage")?,
+        defeated: parse_bool_at(payload, 20, "attack_result requires defeated flag")?,
+    })
+}
+
+fn parse_cast_skill_result(payload: &[u8]) -> Result<ServerMessage, ServerTranslateError> {
+    let skill_id = parse_i32_at(payload, 0, "cast_skill_result requires skill_id")?;
+    let ok = parse_bool_at(payload, 4, "cast_skill_result requires ok flag")?;
+    let target_id = if payload.len() >= 21 {
+        Some(parse_uuid_at(
+            payload,
+            5,
+            "cast_skill_result invalid target_id",
+        )?)
+    } else {
+        None
+    };
+    Ok(ServerMessage::CastSkillResult {
+        skill_id,
+        target_id,
+        ok,
+    })
+}
+
+fn parse_pickup_item_result(payload: &[u8]) -> Result<ServerMessage, ServerTranslateError> {
+    Ok(ServerMessage::PickupItemResult {
+        entity_id: parse_uuid_at(payload, 0, "pickup_item_result requires entity_id")?,
+        ok: parse_bool_at(payload, 16, "pickup_item_result requires ok flag")?,
+    })
+}
+
+fn parse_drop_item_result(payload: &[u8]) -> Result<ServerMessage, ServerTranslateError> {
+    Ok(ServerMessage::DropItemResult {
+        slot: parse_i32_at(payload, 0, "drop_item_result requires slot")?,
+        quantity: parse_i32_at(payload, 4, "drop_item_result requires quantity")?,
+        ok: parse_bool_at(payload, 8, "drop_item_result requires ok flag")?,
+    })
+}
+
+fn parse_use_item_result(payload: &[u8]) -> Result<ServerMessage, ServerTranslateError> {
+    Ok(ServerMessage::UseItemResult {
+        slot: parse_i32_at(payload, 0, "use_item_result requires slot")?,
+        ok: parse_bool_at(payload, 4, "use_item_result requires ok flag")?,
+    })
+}
+
+fn parse_npc_interaction_result(payload: &[u8]) -> Result<ServerMessage, ServerTranslateError> {
+    let npc_id = parse_uuid_at(payload, 0, "npc_interaction_result requires npc_id")?;
+    let text = if payload.len() > 16 {
+        bytes_to_optional_server_string(&payload[16..], 256)?
+    } else {
+        None
+    };
+    Ok(ServerMessage::NpcInteractionResult {
+        npc_id,
+        payload: text,
+    })
+}
+
+fn parse_sender_and_message(payload: &[u8]) -> Result<(String, String), ServerTranslateError> {
+    let mut split = payload.splitn(2, |b| *b == 0);
+    let from_raw = split
+        .next()
+        .ok_or(ServerTranslateError::InvalidPayload("sender missing"))?;
+    let message_raw = split
+        .next()
+        .ok_or(ServerTranslateError::InvalidPayload("message missing"))?;
+    let from = bytes_to_optional_server_string(from_raw, 32)?
+        .ok_or(ServerTranslateError::InvalidPayload("sender empty"))?;
+    let message = bytes_to_optional_server_string(message_raw, 160)?
+        .ok_or(ServerTranslateError::InvalidPayload("message empty"))?;
+    Ok((from, message))
+}
+
+fn parse_error_result(payload: &[u8]) -> Result<ServerMessage, ServerTranslateError> {
+    let code = parse_wire_error_code(parse_u16_at(payload, 0, "error requires code")?);
+    let message = if payload.len() > 2 {
+        bytes_to_optional_server_string(&payload[2..], 160)?
+    } else {
+        None
+    };
+    Ok(ServerMessage::Error { code, message })
 }
 
 fn parse_login_payload(payload: &[u8]) -> Result<LoginPayload, TranslateError> {
@@ -512,5 +1212,48 @@ mod tests {
         )
         .expect("translate");
         assert!(matches!(cmd, ClientCommand::Heartbeat));
+    }
+
+    #[test]
+    fn wire_codec_roundtrip_with_compression_and_obfuscation() {
+        let payload = b"AAAAAABBBBBBBBCCCCCCCCCCCC\xFF\xFFZZZZ".to_vec();
+        let options = WireCodecOptions {
+            compression: true,
+            obfuscation_seed: Some(0x5A),
+        };
+        let frame = encode_wire_frame(OPCODE_CHAT, &payload, options);
+        let decoded = decode_wire_frame(&frame, 1024, options).expect("wire decode");
+        assert_eq!(decoded.header.opcode, OPCODE_CHAT);
+        assert_eq!(decoded.payload, payload);
+    }
+
+    #[test]
+    fn translate_server_login_result() {
+        let mut payload = Vec::new();
+        payload.push(1);
+        payload.extend_from_slice(&WireErrorCode::Ok.as_u16().to_le_bytes());
+        payload.extend_from_slice(b"welcome\0");
+        let packet = DecodedPacket {
+            header: PacketHeader {
+                length: (2 + payload.len()) as u16,
+                opcode: S_OPCODE_LOGIN_RESULT,
+            },
+            payload,
+        };
+        let msg =
+            translate_server_packet_for_version(&packet, ProtocolVersion::LegacyV382).expect("ok");
+        assert!(matches!(
+            msg,
+            ServerMessage::LoginResult {
+                accepted: true,
+                code: WireErrorCode::Ok,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn parse_wire_error_code_unknown() {
+        assert_eq!(parse_wire_error_code(9999), WireErrorCode::Unknown);
     }
 }
