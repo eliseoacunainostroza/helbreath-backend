@@ -6,8 +6,8 @@
     "translate_error": 5
   },
   "origin_counts": {
-    "capture": 0,
-    "manual": 53,
+    "capture": 40,
+    "manual": 13,
     "seed": 1,
     "synthetic": 0
   },
@@ -116,7 +116,53 @@
       "whisper"
     ]
   },
+  "coverage_capture_only": {
+    "legacy_v382": [
+      "attack",
+      "cast_skill",
+      "character_create",
+      "character_delete",
+      "character_list",
+      "character_select",
+      "chat",
+      "drop_item",
+      "enter_world",
+      "guild_chat",
+      "heartbeat",
+      "login",
+      "logout",
+      "move",
+      "npc_interaction",
+      "pickup_item",
+      "use_item",
+      "whisper"
+    ],
+    "modern_v400": [
+      "attack",
+      "cast_skill",
+      "character_create",
+      "character_delete",
+      "character_list",
+      "character_select",
+      "chat",
+      "drop_item",
+      "enter_world",
+      "guild_chat",
+      "heartbeat",
+      "login",
+      "logout",
+      "move",
+      "npc_interaction",
+      "pickup_item",
+      "use_item",
+      "whisper"
+    ]
+  },
   "missing_real_required": {
+    "legacy_v382": [],
+    "modern_v400": []
+  },
+  "missing_capture_required": {
     "legacy_v382": [],
     "modern_v400": []
   },

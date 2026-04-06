@@ -4,6 +4,8 @@ Fuente: `docs/protocol_opcode_matrix.json`
 
 Este playbook transforma brechas de paridad real en sesiones accionables de captura con cliente real.
 
+Modo de cobertura: `capture_only`
+
 ## legacy_v382
 
 - Pendientes de captura real: 0
