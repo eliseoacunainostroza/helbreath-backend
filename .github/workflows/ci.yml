@@ -73,5 +73,8 @@ jobs:
       - name: Verify baseline (fmt + clippy + tests + smoke full-stack)
         env:
           RUN_FULL_STACK: "1"
+          RUN_PARITY_REPORTS: "1"
+          RUN_PARITY_STRICT: "1"
+          REAL_PARITY_PROTOCOLS: "modern_v400"
           SMOKE_SETUP: "0"
         run: bash deploy/scripts/verify_baseline.sh
