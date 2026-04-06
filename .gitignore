@@ -11,3 +11,19 @@ docs/html/
 *.pyc
 crates/net/tests/fixtures/replay_frames.bin
 crates/net/tests/fixtures/replay_cases.generated.json
+# Python cache
+**/__pycache__/
+*.pyc
+
+# Generated docs
+docs/html/
+
+# Local smoke/runtime artifacts
+.smoke/
+tmp/
+backups/
+bin/
+
+# Generated replay artifacts (no fuente de verdad)
+crates/net/tests/fixtures/replay_cases.generated.json
+crates/net/tests/fixtures/replay_frames.bin
