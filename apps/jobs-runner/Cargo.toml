@@ -1,0 +1,17 @@
+[package]
+name = "hb-jobs-runner"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+axum = { workspace = true }
+chrono = { workspace = true }
+config = { path = "../../crates/config" }
+infrastructure = { path = "../../crates/infrastructure" }
+observability = { path = "../../crates/observability" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }

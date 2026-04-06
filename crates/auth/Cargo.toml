@@ -1,0 +1,18 @@
+[package]
+name = "auth"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+argon2 = { workspace = true }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+domain = { path = "../domain" }
+infrastructure = { path = "../infrastructure" }
+observability = { path = "../observability" }
+
+[dev-dependencies]
+tokio = { workspace = true }

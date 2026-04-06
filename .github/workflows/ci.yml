@@ -1,0 +1,77 @@
+name: helbreath-backend-ci
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  HB_DATABASE_URL: postgres://hb:hbpass@127.0.0.1:5432/helbreath
+  HB_BOOTSTRAP_ADMIN_EMAIL: admin@localhost
+  HB_BOOTSTRAP_ADMIN_PASSWORD: change_me_now
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: helbreath
+          POSTGRES_USER: hb
+          POSTGRES_PASSWORD: hbpass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hb -d helbreath"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping || exit 1"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Wait for Postgres
+        run: |
+          for i in {1..30}; do
+            pg_isready -h 127.0.0.1 -p 5432 -U hb -d helbreath && exit 0
+            sleep 1
+          done
+          echo "postgres did not become ready in time"
+          exit 1
+
+      - name: Run migrations
+        run: bash deploy/scripts/migrate.sh
+
+      - name: Verify baseline (fmt + clippy + tests + smoke full-stack)
+        env:
+          RUN_FULL_STACK: "1"
+          SMOKE_SETUP: "0"
+        run: bash deploy/scripts/verify_baseline.sh

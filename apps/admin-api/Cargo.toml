@@ -1,0 +1,23 @@
+[package]
+name = "hb-admin-api"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+argon2 = { workspace = true }
+axum = { workspace = true }
+chrono = { workspace = true }
+redis = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["process"] }
+tower-http = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+admin_portal = { path = "../../crates/admin_portal" }
+config = { path = "../../crates/config" }
+domain = { path = "../../crates/domain" }
+infrastructure = { path = "../../crates/infrastructure" }
+observability = { path = "../../crates/observability" }

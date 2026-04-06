@@ -1,0 +1,56 @@
+syntax = "proto3";
+package helbreath.internal.v1;
+
+message SessionEnvelope {
+  string session_id = 1;
+  uint64 sequence = 2;
+  bytes payload = 3;
+}
+
+message EnterMapCommand {
+  string session_id = 1;
+  string character_id = 2;
+  uint32 map_id = 3;
+}
+
+message RouteClientCommand {
+  string session_id = 1;
+  uint32 map_id = 2;
+  string command_json = 3;
+}
+
+message MapTickReport {
+  uint32 map_id = 1;
+  uint64 tick_ms = 2;
+  uint64 overrun_count = 3;
+  uint32 online_players = 4;
+}
+
+message AuthRequest {
+  string session_id = 1;
+  string username = 2;
+  string password = 3;
+  string remote_ip = 4;
+}
+
+message AuthResult {
+  string session_id = 1;
+  bool accepted = 2;
+  string account_id = 3;
+  string reason = 4;
+}
+
+message BroadcastCommand {
+  string admin_user_id = 1;
+  string message = 2;
+}
+
+service AuthService {
+  rpc Login(AuthRequest) returns (AuthResult);
+}
+
+service WorldCoordinator {
+  rpc EnterMap(EnterMapCommand) returns (SessionEnvelope);
+  rpc RouteCommand(RouteClientCommand) returns (SessionEnvelope);
+  rpc Broadcast(BroadcastCommand) returns (SessionEnvelope);
+}

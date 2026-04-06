@@ -1,0 +1,18 @@
+[Unit]
+Description=Helbreath Chat Service (Rust)
+After=network-online.target hb-world.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hb
+Group=hb
+WorkingDirectory=/opt/helbreath-backend
+EnvironmentFile=/opt/helbreath-backend/.env
+ExecStart=/opt/helbreath-backend/bin/hb-chat-service
+Restart=always
+RestartSec=2
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

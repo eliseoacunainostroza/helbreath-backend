@@ -1,0 +1,56 @@
+[workspace]
+members = [
+  "apps/gateway",
+  "apps/auth-service",
+  "apps/world-service",
+  "apps/map-server",
+  "apps/chat-service",
+  "apps/admin-api",
+  "apps/jobs-runner",
+  "crates/config",
+  "crates/domain",
+  "crates/application",
+  "crates/net",
+  "crates/proto",
+  "crates/auth",
+  "crates/world",
+  "crates/map_server",
+  "crates/chat",
+  "crates/admin_portal",
+  "crates/infrastructure",
+  "crates/observability",
+  "crates/test_support"
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+license = "MIT"
+
+[workspace.dependencies]
+anyhow = "1"
+argon2 = "0.5"
+async-trait = "0.1"
+axum = { version = "0.7", features = ["macros", "json"] }
+base64 = "0.22"
+bytes = "1"
+chrono = { version = "0.4", features = ["serde"] }
+dotenvy = "0.15"
+once_cell = "1"
+opentelemetry = "0.24"
+opentelemetry_sdk = "0.24"
+rand = "0.8"
+redis = { version = "0.26", features = ["tokio-comp"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono"] }
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "net", "sync", "io-util"] }
+tonic = { version = "0.12", features = ["transport"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace", "request-id", "util"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+uuid = { version = "1", features = ["v4", "serde"] }

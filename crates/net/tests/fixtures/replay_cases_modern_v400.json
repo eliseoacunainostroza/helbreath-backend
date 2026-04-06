@@ -1,0 +1,200 @@
+[
+  {
+    "name": "attack_in_world_modern_seed",
+    "phase": "in_world",
+    "frame_hex": "12 00 01 01 10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F",
+    "expect": {
+      "kind": "command",
+      "command": "attack"
+    },
+    "protocol_version": "modern_v400",
+    "origin": "seed"
+  },
+  {
+    "name": "capture_00000051_op_0002_modern_seed",
+    "phase": "in_character_list",
+    "protocol_version": "modern_v400",
+    "frame_hex": "02 00 02 00",
+    "expect": {
+      "kind": "command",
+      "command": "character_list"
+    },
+    "origin": "seed"
+  },
+  {
+    "name": "capture_00000055_op_0003_modern_seed",
+    "phase": "in_character_list",
+    "protocol_version": "modern_v400",
+    "frame_hex": "07 00 03 00 6E 65 6F 00 01",
+    "expect": {
+      "kind": "command",
+      "command": "character_create"
+    },
+    "origin": "seed"
+  },
+  {
+    "name": "capture_00000064_op_0004_modern_seed",
+    "phase": "in_character_list",
+    "protocol_version": "modern_v400",
+    "frame_hex": "12 00 04 00 10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F",
+    "expect": {
+      "kind": "command",
+      "command": "character_select"
+    },
+    "origin": "seed"
+  },
+  {
+    "name": "capture_00000084_op_0006_modern_seed",
+    "phase": "in_character_list",
+    "protocol_version": "modern_v400",
+    "frame_hex": "12 00 06 00 20 21 22 23 24 25 26 27 28 29 2A 2B 2C 2D 2E 2F",
+    "expect": {
+      "kind": "command",
+      "command": "character_delete"
+    },
+    "origin": "seed"
+  },
+  {
+    "name": "capture_00000104_op_0005_modern_seed",
+    "phase": "in_character_list",
+    "protocol_version": "modern_v400",
+    "frame_hex": "02 00 05 00",
+    "expect": {
+      "kind": "command",
+      "command": "enter_world"
+    },
+    "origin": "seed"
+  },
+  {
+    "name": "capture_00000108_op_02FE_modern_seed",
+    "phase": "in_world",
+    "protocol_version": "modern_v400",
+    "frame_hex": "02 00 FE 02",
+    "expect": {
+      "kind": "command",
+      "command": "heartbeat"
+    },
+    "origin": "seed"
+  },
+  {
+    "name": "capture_00000112_op_0100_modern_seed",
+    "phase": "in_world",
+    "protocol_version": "modern_v400",
+    "frame_hex": "0B 00 00 01 0C 00 00 00 18 00 00 00 01",
+    "expect": {
+      "kind": "command",
+      "command": "move"
+    },
+    "origin": "seed"
+  },
+  {
+    "name": "capture_00000145_op_0102_modern_seed",
+    "phase": "in_world",
+    "protocol_version": "modern_v400",
+    "frame_hex": "06 00 02 01 2A 00 00 00",
+    "expect": {
+      "kind": "command",
+      "command": "cast_skill"
+    },
+    "origin": "seed"
+  },
+  {
+    "name": "capture_00000153_op_0103_modern_seed",
+    "phase": "in_world",
+    "protocol_version": "modern_v400",
+    "frame_hex": "12 00 03 01 40 41 42 43 44 45 46 47 48 49 4A 4B 4C 4D 4E 4F",
+    "expect": {
+      "kind": "command",
+      "command": "pickup_item"
+    },
+    "origin": "seed"
+  },
+  {
+    "name": "capture_00000173_op_0104_modern_seed",
+    "phase": "in_world",
+    "protocol_version": "modern_v400",
+    "frame_hex": "0A 00 04 01 03 00 00 00 02 00 00 00",
+    "expect": {
+      "kind": "command",
+      "command": "drop_item"
+    },
+    "origin": "seed"
+  },
+  {
+    "name": "capture_00000185_op_0105_modern_seed",
+    "phase": "in_world",
+    "protocol_version": "modern_v400",
+    "frame_hex": "06 00 05 01 07 00 00 00",
+    "expect": {
+      "kind": "command",
+      "command": "use_item"
+    },
+    "origin": "seed"
+  },
+  {
+    "name": "capture_00000193_op_0106_modern_seed",
+    "phase": "in_world",
+    "protocol_version": "modern_v400",
+    "frame_hex": "12 00 06 01 50 51 52 53 54 55 56 57 58 59 5A 5B 5C 5D 5E 5F",
+    "expect": {
+      "kind": "command",
+      "command": "npc_interaction"
+    },
+    "origin": "seed"
+  },
+  {
+    "name": "capture_00000213_op_0200_modern_seed",
+    "phase": "in_world",
+    "protocol_version": "modern_v400",
+    "frame_hex": "06 00 00 02 68 6F 6C 61",
+    "expect": {
+      "kind": "command",
+      "command": "chat"
+    },
+    "origin": "seed"
+  },
+  {
+    "name": "capture_00000221_op_0201_modern_seed",
+    "phase": "in_world",
+    "protocol_version": "modern_v400",
+    "frame_hex": "0A 00 01 02 6E 65 6F 00 68 6F 6C 61",
+    "expect": {
+      "kind": "command",
+      "command": "whisper"
+    },
+    "origin": "seed"
+  },
+  {
+    "name": "capture_00000233_op_0202_modern_seed",
+    "phase": "in_world",
+    "protocol_version": "modern_v400",
+    "frame_hex": "07 00 02 02 67 75 69 6C 64",
+    "expect": {
+      "kind": "command",
+      "command": "guild_chat"
+    },
+    "origin": "seed"
+  },
+  {
+    "name": "capture_00000242_op_02FF_modern_seed",
+    "phase": "in_world",
+    "protocol_version": "modern_v400",
+    "frame_hex": "02 00 FF 02",
+    "expect": {
+      "kind": "command",
+      "command": "logout"
+    },
+    "origin": "seed"
+  },
+  {
+    "name": "login_pre_auth_modern",
+    "phase": "pre_auth",
+    "protocol_version": "modern_v400",
+    "frame_hex": "1F 00 01 00 6E 65 6F 00 70 34 73 73 00 58 74 72 65 6D 65 2D 4D 6F 64 65 72 6E 2D 30 2E 30 2E 31 00",
+    "expect": {
+      "kind": "command",
+      "command": "login"
+    },
+    "origin": "manual"
+  }
+]

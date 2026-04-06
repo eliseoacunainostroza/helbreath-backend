@@ -1,0 +1,42 @@
+global:
+  scrape_interval: 5s
+  scrape_timeout: 4s
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  - job_name: hb-gateway
+    static_configs:
+      - targets: ["127.0.0.1:7080"]
+    metrics_path: /metrics/prometheus
+
+  - job_name: hb-auth-service
+    static_configs:
+      - targets: ["127.0.0.1:7101"]
+    metrics_path: /metrics/prometheus
+
+  - job_name: hb-world-service
+    static_configs:
+      - targets: ["127.0.0.1:7201"]
+    metrics_path: /metrics/prometheus
+
+  - job_name: hb-map-server
+    static_configs:
+      - targets: ["127.0.0.1:7301"]
+    metrics_path: /metrics/prometheus
+
+  - job_name: hb-chat-service
+    static_configs:
+      - targets: ["127.0.0.1:7401"]
+    metrics_path: /metrics/prometheus
+
+  - job_name: hb-jobs-runner
+    static_configs:
+      - targets: ["127.0.0.1:7501"]
+    metrics_path: /metrics/prometheus
+
+  - job_name: hb-admin-api
+    static_configs:
+      - targets: ["127.0.0.1:8080"]
+    metrics_path: /metrics/prometheus

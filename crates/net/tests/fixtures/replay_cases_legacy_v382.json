@@ -1,0 +1,360 @@
+[
+  {
+    "name": "attack_in_world",
+    "phase": "in_world",
+    "frame_hex": "12 00 01 01 10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F",
+    "expect": {
+      "kind": "command",
+      "command": "attack"
+    },
+    "protocol_version": "legacy_v382",
+    "origin": "manual"
+  },
+  {
+    "name": "capture_00000000_op_0001",
+    "phase": "pre_auth",
+    "protocol_version": "legacy_v382",
+    "frame_hex": "10 00 01 00 6E 65 6F 00 70 34 73 73 00 34 2E 39 36 00",
+    "expect": {
+      "kind": "command",
+      "command": "login"
+    },
+    "origin": "synthetic"
+  },
+  {
+    "name": "capture_00000018_op_0001",
+    "phase": "pre_auth",
+    "protocol_version": "legacy_v382",
+    "frame_hex": "1F 00 01 00 6E 65 6F 00 70 34 73 73 00 58 74 72 65 6D 65 2D 4D 6F 64 65 72 6E 2D 30 2E 30 2E 31 00",
+    "expect": {
+      "kind": "command",
+      "command": "login"
+    },
+    "origin": "synthetic"
+  },
+  {
+    "name": "capture_00000051_op_0002",
+    "phase": "in_character_list",
+    "protocol_version": "legacy_v382",
+    "frame_hex": "02 00 02 00",
+    "expect": {
+      "kind": "command",
+      "command": "character_list"
+    },
+    "origin": "synthetic"
+  },
+  {
+    "name": "capture_00000055_op_0003",
+    "phase": "in_character_list",
+    "protocol_version": "legacy_v382",
+    "frame_hex": "07 00 03 00 6E 65 6F 00 01",
+    "expect": {
+      "kind": "command",
+      "command": "character_create"
+    },
+    "origin": "synthetic"
+  },
+  {
+    "name": "capture_00000064_op_0004",
+    "phase": "in_character_list",
+    "protocol_version": "legacy_v382",
+    "frame_hex": "12 00 04 00 10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F",
+    "expect": {
+      "kind": "command",
+      "command": "character_select"
+    },
+    "origin": "synthetic"
+  },
+  {
+    "name": "capture_00000084_op_0006",
+    "phase": "in_character_list",
+    "protocol_version": "legacy_v382",
+    "frame_hex": "12 00 06 00 20 21 22 23 24 25 26 27 28 29 2A 2B 2C 2D 2E 2F",
+    "expect": {
+      "kind": "command",
+      "command": "character_delete"
+    },
+    "origin": "synthetic"
+  },
+  {
+    "name": "capture_00000104_op_0005",
+    "phase": "in_character_list",
+    "protocol_version": "legacy_v382",
+    "frame_hex": "02 00 05 00",
+    "expect": {
+      "kind": "command",
+      "command": "enter_world"
+    },
+    "origin": "synthetic"
+  },
+  {
+    "name": "capture_00000108_op_02FE",
+    "phase": "in_world",
+    "protocol_version": "legacy_v382",
+    "frame_hex": "02 00 FE 02",
+    "expect": {
+      "kind": "command",
+      "command": "heartbeat"
+    },
+    "origin": "synthetic"
+  },
+  {
+    "name": "capture_00000112_op_0100",
+    "phase": "in_world",
+    "protocol_version": "legacy_v382",
+    "frame_hex": "0B 00 00 01 0C 00 00 00 18 00 00 00 01",
+    "expect": {
+      "kind": "command",
+      "command": "move"
+    },
+    "origin": "synthetic"
+  },
+  {
+    "name": "capture_00000125_op_0101",
+    "phase": "in_world",
+    "protocol_version": "legacy_v382",
+    "frame_hex": "12 00 01 01 30 31 32 33 34 35 36 37 38 39 3A 3B 3C 3D 3E 3F",
+    "expect": {
+      "kind": "command",
+      "command": "attack"
+    },
+    "origin": "synthetic"
+  },
+  {
+    "name": "capture_00000145_op_0102",
+    "phase": "in_world",
+    "protocol_version": "legacy_v382",
+    "frame_hex": "06 00 02 01 2A 00 00 00",
+    "expect": {
+      "kind": "command",
+      "command": "cast_skill"
+    },
+    "origin": "synthetic"
+  },
+  {
+    "name": "capture_00000153_op_0103",
+    "phase": "in_world",
+    "protocol_version": "legacy_v382",
+    "frame_hex": "12 00 03 01 40 41 42 43 44 45 46 47 48 49 4A 4B 4C 4D 4E 4F",
+    "expect": {
+      "kind": "command",
+      "command": "pickup_item"
+    },
+    "origin": "synthetic"
+  },
+  {
+    "name": "capture_00000173_op_0104",
+    "phase": "in_world",
+    "protocol_version": "legacy_v382",
+    "frame_hex": "0A 00 04 01 03 00 00 00 02 00 00 00",
+    "expect": {
+      "kind": "command",
+      "command": "drop_item"
+    },
+    "origin": "synthetic"
+  },
+  {
+    "name": "capture_00000185_op_0105",
+    "phase": "in_world",
+    "protocol_version": "legacy_v382",
+    "frame_hex": "06 00 05 01 07 00 00 00",
+    "expect": {
+      "kind": "command",
+      "command": "use_item"
+    },
+    "origin": "synthetic"
+  },
+  {
+    "name": "capture_00000193_op_0106",
+    "phase": "in_world",
+    "protocol_version": "legacy_v382",
+    "frame_hex": "12 00 06 01 50 51 52 53 54 55 56 57 58 59 5A 5B 5C 5D 5E 5F",
+    "expect": {
+      "kind": "command",
+      "command": "npc_interaction"
+    },
+    "origin": "synthetic"
+  },
+  {
+    "name": "capture_00000213_op_0200",
+    "phase": "in_world",
+    "protocol_version": "legacy_v382",
+    "frame_hex": "06 00 00 02 68 6F 6C 61",
+    "expect": {
+      "kind": "command",
+      "command": "chat"
+    },
+    "origin": "synthetic"
+  },
+  {
+    "name": "capture_00000221_op_0201",
+    "phase": "in_world",
+    "protocol_version": "legacy_v382",
+    "frame_hex": "0A 00 01 02 6E 65 6F 00 68 6F 6C 61",
+    "expect": {
+      "kind": "command",
+      "command": "whisper"
+    },
+    "origin": "synthetic"
+  },
+  {
+    "name": "capture_00000233_op_0202",
+    "phase": "in_world",
+    "protocol_version": "legacy_v382",
+    "frame_hex": "07 00 02 02 67 75 69 6C 64",
+    "expect": {
+      "kind": "command",
+      "command": "guild_chat"
+    },
+    "origin": "synthetic"
+  },
+  {
+    "name": "capture_00000242_op_02FF",
+    "phase": "in_world",
+    "protocol_version": "legacy_v382",
+    "frame_hex": "02 00 FF 02",
+    "expect": {
+      "kind": "command",
+      "command": "logout"
+    },
+    "origin": "synthetic"
+  },
+  {
+    "name": "capture_00000246_op_1234",
+    "phase": "in_world",
+    "protocol_version": "legacy_v382",
+    "frame_hex": "02 00 34 12",
+    "expect": {
+      "kind": "translate_error"
+    },
+    "origin": "synthetic"
+  },
+  {
+    "name": "cast_skill_payload_too_short",
+    "phase": "in_world",
+    "frame_hex": "05 00 02 01 01 00 00",
+    "expect": {
+      "kind": "translate_error"
+    },
+    "protocol_version": "legacy_v382",
+    "origin": "manual"
+  },
+  {
+    "name": "character_delete_in_character_list",
+    "phase": "in_character_list",
+    "frame_hex": "12 00 06 00 00 11 22 33 44 55 66 77 88 99 AA BB CC DD EE FF",
+    "expect": {
+      "kind": "command",
+      "command": "character_delete"
+    },
+    "protocol_version": "legacy_v382",
+    "origin": "manual"
+  },
+  {
+    "name": "character_list_post_auth",
+    "phase": "post_auth",
+    "frame_hex": "02 00 02 00",
+    "expect": {
+      "kind": "command",
+      "command": "character_list"
+    },
+    "protocol_version": "legacy_v382",
+    "origin": "manual"
+  },
+  {
+    "name": "character_select_in_character_list",
+    "phase": "in_character_list",
+    "frame_hex": "12 00 04 00 01 12 23 34 45 56 67 78 89 9A AB BC CD DE EF F0",
+    "expect": {
+      "kind": "command",
+      "command": "character_select"
+    },
+    "protocol_version": "legacy_v382",
+    "origin": "manual"
+  },
+  {
+    "name": "chat_before_auth_rejected",
+    "phase": "pre_auth",
+    "frame_hex": "07 00 00 02 62 61 64 63 68",
+    "expect": {
+      "kind": "translate_error"
+    },
+    "protocol_version": "legacy_v382",
+    "origin": "manual"
+  },
+  {
+    "name": "decode_length_mismatch",
+    "phase": "in_world",
+    "frame_hex": "06 00 FE 02",
+    "expect": {
+      "kind": "decode_error"
+    },
+    "protocol_version": "legacy_v382",
+    "origin": "manual"
+  },
+  {
+    "name": "heartbeat_pre_auth",
+    "phase": "pre_auth",
+    "frame_hex": "02 00 FE 02",
+    "expect": {
+      "kind": "command",
+      "command": "heartbeat"
+    },
+    "protocol_version": "legacy_v382",
+    "origin": "manual"
+  },
+  {
+    "name": "login_pre_auth_legacy",
+    "phase": "pre_auth",
+    "frame_hex": "0B 00 01 00 75 00 70 00 34 2E 39 36 00",
+    "expect": {
+      "kind": "command",
+      "command": "login"
+    },
+    "protocol_version": "legacy_v382",
+    "origin": "manual"
+  },
+  {
+    "name": "move_in_character_list_rejected",
+    "phase": "in_character_list",
+    "frame_hex": "0B 00 00 01 01 00 00 00 02 00 00 00 00",
+    "expect": {
+      "kind": "translate_error"
+    },
+    "protocol_version": "legacy_v382",
+    "origin": "manual"
+  },
+  {
+    "name": "move_in_world",
+    "phase": "in_world",
+    "frame_hex": "0B 00 00 01 0A 00 00 00 14 00 00 00 01",
+    "expect": {
+      "kind": "command",
+      "command": "move"
+    },
+    "protocol_version": "legacy_v382",
+    "origin": "manual"
+  },
+  {
+    "name": "npc_interaction_in_world",
+    "phase": "in_world",
+    "frame_hex": "12 00 06 01 30 31 32 33 34 35 36 37 38 39 3A 3B 3C 3D 3E 3F",
+    "expect": {
+      "kind": "command",
+      "command": "npc_interaction"
+    },
+    "protocol_version": "legacy_v382",
+    "origin": "manual"
+  },
+  {
+    "name": "pickup_item_in_world",
+    "phase": "in_world",
+    "frame_hex": "12 00 03 01 20 21 22 23 24 25 26 27 28 29 2A 2B 2C 2D 2E 2F",
+    "expect": {
+      "kind": "command",
+      "command": "pickup_item"
+    },
+    "protocol_version": "legacy_v382",
+    "origin": "manual"
+  }
+]

@@ -1,0 +1,47 @@
+groups:
+  - name: helbreath-backend
+    rules:
+      - alert: HbServiceDown
+        expr: up{job=~"hb-.*"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Helbreath service down"
+          description: "{{ $labels.job }} on {{ $labels.instance }} is down for more than 1 minute."
+
+      - alert: HbTickOverrunsDetected
+        expr: increase(hb_tick_overruns_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Tick overruns detected"
+          description: "Map tick overruns increased in the last 5 minutes."
+
+      - alert: HbHighDbLatency
+        expr: max(hb_db_latency_ms_last) > 250
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High DB latency"
+          description: "DB latency is above 250ms for at least 5 minutes."
+
+      - alert: HbPacketDecodeErrorsSpiking
+        expr: sum(increase(hb_packet_decode_errors_total[5m])) > 20
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Packet decode errors are spiking"
+          description: "Packet decode/translate errors exceeded 20 over 5 minutes."
+
+      - alert: HbPersistenceErrorsDetected
+        expr: sum(increase(hb_persistence_errors_total[5m])) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Persistence errors detected"
+          description: "At least one persistence error was observed in the last 5 minutes."

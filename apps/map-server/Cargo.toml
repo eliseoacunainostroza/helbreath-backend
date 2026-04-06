@@ -1,0 +1,17 @@
+[package]
+name = "hb-map-server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+application = { path = "../../crates/application" }
+axum = { workspace = true }
+config = { path = "../../crates/config" }
+map_server = { path = "../../crates/map_server" }
+observability = { path = "../../crates/observability" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }

@@ -1,0 +1,5 @@
+[build]
+target-dir = "/var/tmp/helbreath-cargo-target"
+
+[env]
+CARGO_INCREMENTAL = "0"

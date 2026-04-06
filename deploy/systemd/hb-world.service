@@ -1,0 +1,18 @@
+[Unit]
+Description=Helbreath World Coordinator (Rust)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hb
+Group=hb
+WorkingDirectory=/opt/helbreath-backend
+EnvironmentFile=/opt/helbreath-backend/.env
+ExecStart=/opt/helbreath-backend/bin/hb-world-service
+Restart=always
+RestartSec=2
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

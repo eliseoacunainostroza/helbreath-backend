@@ -1,0 +1,13 @@
+target/
+.env
+*.log
+**/.DS_Store
+.smoke/
+backups/
+bin/
+tmp/
+docs/html/
+**/__pycache__/
+*.pyc
+crates/net/tests/fixtures/replay_frames.bin
+crates/net/tests/fixtures/replay_cases.generated.json
