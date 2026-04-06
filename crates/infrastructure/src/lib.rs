@@ -357,6 +357,8 @@ pub trait AdminRepository: Send + Sync {
     ) -> Result<Vec<InventoryRecord>>;
 
     async fn list_maps(&self) -> Result<Vec<MapRuntimeInfo>>;
+    async fn list_active_map_ids(&self) -> Result<Vec<i32>>;
+    async fn activate_map(&self, map_id: i32) -> Result<bool>;
 
     async fn create_sanction(&self, input: CreateSanctionInput) -> Result<()>;
 
@@ -914,6 +916,61 @@ impl AdminRepository for PgRepository {
                 tick_ms: row.get("tick_ms"),
             })
             .collect())
+    }
+
+    async fn list_active_map_ids(&self) -> Result<Vec<i32>> {
+        let rows = self
+            .timed_query(
+                sqlx::query(
+                    r#"
+                    SELECT DISTINCT map_id
+                    FROM map_instances
+                    WHERE status='active'
+                      AND stopped_at IS NULL
+                    ORDER BY map_id
+                    "#,
+                )
+                .fetch_all(&self.pool),
+            )
+            .await?;
+
+        Ok(rows.into_iter().map(|row| row.get("map_id")).collect())
+    }
+
+    async fn activate_map(&self, map_id: i32) -> Result<bool> {
+        let map_exists = self
+            .timed_query(
+                sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM maps WHERE id=$1)")
+                    .bind(map_id)
+                    .fetch_one(&self.pool),
+            )
+            .await?;
+
+        if !map_exists {
+            return Ok(false);
+        }
+
+        self.timed_query(
+            sqlx::query(
+                r#"
+                    INSERT INTO map_instances(map_id, shard_code, status, started_at, stopped_at)
+                    VALUES ($1, 'default', 'active', now(), NULL)
+                    ON CONFLICT (map_id, shard_code)
+                    DO UPDATE
+                    SET status='active',
+                        started_at = CASE
+                            WHEN map_instances.status='active' THEN map_instances.started_at
+                            ELSE now()
+                        END,
+                        stopped_at = NULL
+                    "#,
+            )
+            .bind(map_id)
+            .execute(&self.pool),
+        )
+        .await?;
+
+        Ok(true)
     }
 
     async fn create_sanction(&self, input: CreateSanctionInput) -> Result<()> {
