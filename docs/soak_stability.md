@@ -4,12 +4,12 @@ Fuente: `.smoke/reports/soak_*.json`
 
 ## Resumen
 
-- Corridas analizadas: 7
-- Iteraciones totales: 21
-- Iteraciones OK: 20
+- Corridas analizadas: 8
+- Iteraciones totales: 24
+- Iteraciones OK: 23
 - Iteraciones FAIL: 1
-- Tasa de exito global: 95.24%
-- Latencia promedio por iteracion (p50): 18.05s
+- Tasa de exito global: 95.83%
+- Latencia promedio por iteracion (p50): 18.93s
 - Latencia promedio por iteracion (p95): 28.09s
 - Ultima corrida: OK (3/3)
 
@@ -24,4 +24,5 @@ Fuente: `.smoke/reports/soak_*.json`
 | 2026-04-06 00:10:44 | .smoke/reports/soak_canary_20260406T001044Z.json | 3 | 3 | 0 | 100.00% | 18.93 |
 | 2026-04-06 00:13:37 | .smoke/reports/soak_20260406T001337Z.json | 3 | 3 | 0 | 100.00% | 19.03 |
 | 2026-04-06 00:25:58 | .smoke/reports/soak_canary_20260406T002558Z.json | 3 | 3 | 0 | 100.00% | 16.40 |
+| 2026-04-06 02:57:48 | .smoke/reports/soak_20260406T025747Z.json | 3 | 3 | 0 | 100.00% | 20.54 |
 
