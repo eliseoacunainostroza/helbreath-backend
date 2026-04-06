@@ -128,7 +128,7 @@ def main() -> int:
                 phase = phase_for_command(command, args.phase)
         cases.append(
             {
-                "name": f"capture_{idx:08d}_op_{opcode:04X}",
+                "name": f"capture_{args.protocol_version}_{idx:08d}_op_{opcode:04X}",
                 "phase": phase,
                 "protocol_version": args.protocol_version,
                 "origin": args.origin,

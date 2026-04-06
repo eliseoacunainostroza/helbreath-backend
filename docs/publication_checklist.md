@@ -18,8 +18,21 @@ cd /mnt/helbreath/helbreath-backend
 
 make canary-check
 make replay-opcode-report
+make replay-real-gap
+make replay-real-todo
+make replay-real-playbook
+make replay-real-checklist
+make replay-real-refresh
 make slo-check
 RELEASE_GATE_STOP_SYSTEMD=1 RELEASE_GATE_KILL_SMOKE_PROCS=1 RUN_SOAK=1 RUN_SLO_CHECK=1 bash deploy/scripts/release_gate.sh
+```
+
+Opcional (cuando ya no haya casos seed/synthetic pendientes para protocolo objetivo):
+
+```bash
+make replay-real-parity-check
+# o solo modern durante rollout:
+REAL_PARITY_PROTOCOLS=modern_v400 make replay-real-parity-check
 ```
 
 ## 3) Crear tag de version (annotated)

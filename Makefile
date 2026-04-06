@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: fmt clippy test check baseline baseline-full soak soak-record soak-trend slo-check canary-check tag-release observability-up docs-html docs-html-clean release-check backup-db restore-db restore-db-last install-admin-sudoers run-gateway run-auth run-world run-map run-chat run-admin run-jobs migrate up down seed-admin smoke smoke-full replay-fixture replay-fixture-merge replay-fixture-split replay-modern-seed replay-opcode-report capture-replay replay-fixture-synth
+.PHONY: fmt clippy test check baseline baseline-full soak soak-record soak-trend slo-check canary-check tag-release observability-up docs-html docs-html-clean release-check backup-db restore-db restore-db-last install-admin-sudoers run-gateway run-auth run-world run-map run-chat run-admin run-jobs migrate up down seed-admin smoke smoke-full replay-fixture replay-fixture-merge replay-fixture-split replay-modern-seed replay-modern-no-client replay-modern-no-client-check replay-opcode-report replay-real-gap replay-real-todo replay-real-playbook replay-real-checklist replay-real-refresh replay-real-parity-check replay-capture-pipeline replay-capture-ingest capture-replay replay-fixture-synth
 
 fmt:
 	cargo fmt --all
@@ -147,10 +147,83 @@ replay-modern-seed:
 		--legacy-output crates/net/tests/fixtures/replay_cases_legacy_v382.json \
 		--modern-output crates/net/tests/fixtures/replay_cases_modern_v400.json
 
+replay-modern-no-client:
+	python3 deploy/scripts/generate_replay_frames_synthetic.py \
+		--output tmp/replay_modern_no_client.bin
+	python3 deploy/scripts/replay_fixture_from_bin.py \
+		--input tmp/replay_modern_no_client.bin \
+		--output crates/net/tests/fixtures/replay_cases.generated.json \
+		--phase in_world \
+		--protocol-version modern_v400 \
+		--expect-mode opcode_command \
+		--auto-phase \
+		--origin manual
+	python3 deploy/scripts/replay_merge_cases.py \
+		--base crates/net/tests/fixtures/replay_cases.json \
+		--incoming crates/net/tests/fixtures/replay_cases.generated.json \
+		--output crates/net/tests/fixtures/replay_cases.json
+	python3 deploy/scripts/replay_split_cases.py \
+		--input crates/net/tests/fixtures/replay_cases.json \
+		--legacy-output crates/net/tests/fixtures/replay_cases_legacy_v382.json \
+		--modern-output crates/net/tests/fixtures/replay_cases_modern_v400.json
+
+replay-modern-no-client-check: replay-modern-no-client replay-real-refresh
+	REAL_PARITY_PROTOCOLS=modern_v400 $(MAKE) replay-real-parity-check
+
 replay-opcode-report:
 	python3 deploy/scripts/replay_opcode_report.py \
 		--input crates/net/tests/fixtures/replay_cases.json \
 		--markdown-output docs/protocol_opcode_matrix.md
+
+replay-real-gap:
+	python3 deploy/scripts/replay_opcode_report.py \
+		--input crates/net/tests/fixtures/replay_cases.json \
+		--markdown-output docs/protocol_opcode_matrix.md \
+		--json-output docs/protocol_opcode_matrix.json
+	python3 deploy/scripts/generate_net_parity_checklist.py \
+		--input docs/protocol_opcode_matrix.json \
+		--output docs/net_legacy_parity_checklist.md
+
+replay-real-todo:
+	python3 deploy/scripts/replay_capture_todo.py \
+		--input docs/protocol_opcode_matrix.json \
+		--output docs/protocol_capture_todo.md \
+		--protocols "$${REAL_PARITY_PROTOCOLS:-legacy_v382,modern_v400}"
+
+replay-real-playbook:
+	python3 deploy/scripts/generate_protocol_capture_playbook.py \
+		--input docs/protocol_opcode_matrix.json \
+		--output docs/protocol_capture_playbook.md \
+		--protocols "$${REAL_PARITY_PROTOCOLS:-legacy_v382,modern_v400}"
+
+replay-real-checklist:
+	python3 deploy/scripts/generate_net_parity_checklist.py \
+		--input docs/protocol_opcode_matrix.json \
+		--output docs/net_legacy_parity_checklist.md
+
+replay-real-refresh: replay-real-gap replay-real-todo replay-real-playbook replay-real-checklist docs-html
+
+replay-real-parity-check:
+	python3 deploy/scripts/replay_opcode_report.py \
+		--input crates/net/tests/fixtures/replay_cases.json \
+		--markdown-output docs/protocol_opcode_matrix.md \
+		--json-output docs/protocol_opcode_matrix.json \
+		--fail-on-real-gaps \
+		--real-required-protocols "$${REAL_PARITY_PROTOCOLS:-legacy_v382,modern_v400}"
+
+replay-capture-pipeline:
+	bash deploy/scripts/replay_capture_pipeline.sh \
+		--protocol "$${REPLAY_PROTOCOL:-legacy_v382}" \
+		--listen "$${CAPTURE_LISTEN:-127.0.0.1:3848}" \
+		--upstream "$${CAPTURE_UPSTREAM:-127.0.0.1:2848}" \
+		$${REPLAY_PIPELINE_STRICT:+--strict}
+
+replay-capture-ingest:
+	bash deploy/scripts/replay_capture_pipeline.sh \
+		--protocol "$${REPLAY_PROTOCOL:-legacy_v382}" \
+		--input "$${CAPTURE_INPUT:?use CAPTURE_INPUT=tmp/replay_capture.bin}" \
+		--no-tests \
+		$${REPLAY_PIPELINE_STRICT:+--strict}
 
 replay-fixture-synth:
 	python3 deploy/scripts/generate_replay_frames_synthetic.py \

@@ -51,6 +51,10 @@ Salida en `docs/html/`:
 - `docs/html/migration_plan.html`
 - `docs/html/observability.html`
 - `docs/html/release_checklist.html`
+- `docs/html/net_function_inventory.html`
+- `docs/html/net_legacy_parity_checklist.html`
+- `docs/html/protocol_capture_todo.html`
+- `docs/html/protocol_capture_playbook.html`
 - `docs/html/soak_stability.html`
 - `docs/html/slo_sla.html`
 - `docs/html/canary_rollback_runbook.html`
@@ -143,6 +147,10 @@ helbreath-backend/
     migration_plan.md
     observability.md
     release_checklist.md
+    net_function_inventory.md
+    net_legacy_parity_checklist.md
+    protocol_capture_todo.md
+    protocol_capture_playbook.md
     soak_stability.md
     slo_sla.md
     canary_rollback_runbook.md
@@ -156,6 +164,10 @@ helbreath-backend/
       migration_plan.html
       observability.html
       release_checklist.html
+      net_function_inventory.html
+      net_legacy_parity_checklist.html
+      protocol_capture_todo.html
+      protocol_capture_playbook.html
       soak_stability.html
       slo_sla.html
       canary_rollback_runbook.html
@@ -383,6 +395,8 @@ Nota:
 - con `--launch`, si algun puerto de servicio esta ocupado (systemd u otro proceso),
   el smoke runner reasigna automaticamente puertos locales libres para la corrida.
 - el smoke full-stack valida flujo TCP de gateway para `legacy` y `modern`.
+- smoke full-stack tambien ejecuta `gateway.tcp.command-matrix` para validar comandos gameplay
+  (attack/cast/pickup/drop/use/npc/chat/whisper/guild/heartbeat) con evidencia outbound + persistencia.
 - `soak_test.py` repite smoke en bucle para detectar flakiness y puede exportar resumen JSON:
   `python3 deploy/scripts/soak_test.py --iterations 5 --json-output .smoke/soak_report.json`
 - `soak_report.py` consolida historico y genera `docs/soak_stability.md`.
@@ -402,11 +416,30 @@ CAPTURE_UPSTREAM=127.0.0.1:2848 make capture-replay
 # 3) detener con Ctrl+C
 ```
 
+Pipeline de captura + merge + split + reporte (todo en uno):
+
+```bash
+# captura en vivo (legacy por defecto)
+make replay-capture-pipeline
+
+# captura modern
+REPLAY_PROTOCOL=modern_v400 make replay-capture-pipeline
+
+# ingerir un .bin ya capturado
+REPLAY_PROTOCOL=legacy_v382 CAPTURE_INPUT=tmp/replay_capture_legacy.bin make replay-capture-ingest
+```
+
 Sin cliente disponible:
 
 ```bash
 # genera captura sintetica util para validar pipeline replay end-to-end
 make replay-fixture-synth
+
+# alternativa para cubrir modern_v400 sin cliente real:
+# genera frames sinteticos e ingesta como origen manual (cliente emulado)
+make replay-modern-no-client
+make replay-real-refresh
+REAL_PARITY_PROTOCOLS=modern_v400 make replay-real-parity-check
 ```
 
 Generador de casos desde binario:
@@ -437,12 +470,43 @@ make replay-modern-seed
 # generar matriz de opcodes por version
 make replay-opcode-report
 
+# reporte de brechas de paridad real (solo origen manual/capture)
+make replay-real-gap
+
+# checklist accionable de captura real por protocolo
+make replay-real-todo
+
+# playbook detallado por escenarios de captura real (A/B/C)
+make replay-real-playbook
+
+# checklist funcional de paridad legacy (migrada/probada con check)
+make replay-real-checklist
+
+# refresco completo de artefactos de paridad + docs html
+make replay-real-refresh
+
+# gate estricto de paridad real (falla si faltan comandos reales por protocolo)
+make replay-real-parity-check
+# opcional: exigir solo modern durante rollout
+REAL_PARITY_PROTOCOLS=modern_v400 make replay-real-parity-check
+
 # validar replay fixture en tests
 cargo test -p net replay_cases_json_fixture -- --nocapture
 
 # guardrail: modern debe incluir al menos un comando con origen manual/capture
 cargo test -p net replay_cases_modern_v400_fixture -- --nocapture
 ```
+
+Flujo recomendado para paridad real con cliente:
+- Ejecutar captura TCP (`make capture-replay`) apuntando al gateway real.
+- Jugar flujo en cliente real (login, lista, create/delete, enter_world, movimiento, combate, chat, logout).
+- Generar casos desde la captura con `--origin capture`.
+- Merge + split + tests.
+- Ejecutar `make replay-real-gap` y cerrar la lista de `faltantes_real`.
+- Revisar/ejecutar checklist de acciones pendientes en `docs/protocol_capture_todo.md` (`make replay-real-todo`).
+- Ejecutar playbook detallado por escenarios en `docs/protocol_capture_playbook.md` (`make replay-real-playbook`).
+- Revisar checklist funcional migrada/probada en `docs/net_legacy_parity_checklist.md` (`make replay-real-checklist`).
+- Cuando `faltantes_real` sea `ninguno` para los protocolos objetivo, habilitar `make replay-real-parity-check` en el gate de release.
 
 ## 13) Ejecución local
 

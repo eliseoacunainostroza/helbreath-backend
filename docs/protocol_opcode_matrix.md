@@ -2,11 +2,20 @@
 
 Fuente: `crates/net/tests/fixtures/replay_cases.json`
 
-Casos: command=46, decode_error=1, translate_error=4
+Casos: command=48, decode_error=1, translate_error=5
 
-Origen: capture=0, manual=14, seed=17, synthetic=20
+Origen: capture=0, manual=53, seed=1, synthetic=0
 
-modern_v400 comandos no-seed (manual/capture): 1
+modern_v400 comandos no-seed (manual/capture): 18
+
+## Cobertura de Comandos Requeridos
+
+Comandos requeridos (18): login, character_list, character_create, character_delete, character_select, enter_world, move, attack, cast_skill, pickup_item, drop_item, use_item, npc_interaction, chat, whisper, guild_chat, heartbeat, logout
+
+| protocolo | cobertura_total | cobertura_real_manual_capture | faltantes_real |
+|---|---:|---:|---|
+| legacy_v382 | 18/18 | 18/18 | ninguno |
+| modern_v400 | 18/18 | 18/18 | ninguno |
 
 | comando | legacy_v382 | modern_v400 |
 |---|---|---|

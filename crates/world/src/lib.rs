@@ -6,6 +6,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone)]
 pub struct RoutedCommand {
     pub session_id: Uuid,
+    pub character_id: Option<Uuid>,
     pub command: ClientCommand,
 }
 
@@ -18,6 +19,7 @@ pub enum WorldMessage {
     RouteToMap {
         map_id: i32,
         session_id: Uuid,
+        character_id: Option<Uuid>,
         command: ClientCommand,
     },
     Broadcast {
@@ -44,12 +46,19 @@ impl WorldHandle {
         Self { tx }
     }
 
-    pub async fn route_to_map(&self, map_id: i32, session_id: Uuid, command: ClientCommand) {
+    pub async fn route_to_map(
+        &self,
+        map_id: i32,
+        session_id: Uuid,
+        character_id: Option<Uuid>,
+        command: ClientCommand,
+    ) {
         let _ = self
             .tx
             .send(WorldMessage::RouteToMap {
                 map_id,
                 session_id,
+                character_id,
                 command,
             })
             .await;
@@ -101,6 +110,7 @@ impl WorldCoordinator {
                 WorldMessage::RouteToMap {
                     map_id,
                     session_id,
+                    character_id,
                     command,
                 } => {
                     match command {
@@ -127,6 +137,7 @@ impl WorldCoordinator {
                         let _ = map_tx
                             .send(RoutedCommand {
                                 session_id,
+                                character_id,
                                 command,
                             })
                             .await;
@@ -174,7 +185,7 @@ mod tests {
 
         let session_id = Uuid::new_v4();
         handle
-            .route_to_map(1, session_id, ClientCommand::EnterWorld)
+            .route_to_map(1, session_id, None, ClientCommand::EnterWorld)
             .await;
         let _ = map_rx.recv().await.expect("map command");
 
@@ -190,7 +201,7 @@ mod tests {
         );
 
         handle
-            .route_to_map(1, session_id, ClientCommand::Logout)
+            .route_to_map(1, session_id, None, ClientCommand::Logout)
             .await;
         let _ = map_rx.recv().await.expect("map command");
 
@@ -225,12 +236,12 @@ mod tests {
 
         let session_id = Uuid::new_v4();
         handle
-            .route_to_map(1, session_id, ClientCommand::EnterWorld)
+            .route_to_map(1, session_id, None, ClientCommand::EnterWorld)
             .await;
         let _ = map_rx.recv().await.expect("map command");
 
         handle
-            .route_to_map(1, session_id, ClientCommand::EnterWorld)
+            .route_to_map(1, session_id, None, ClientCommand::EnterWorld)
             .await;
         let _ = map_rx.recv().await.expect("map command");
 

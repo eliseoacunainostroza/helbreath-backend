@@ -1,14 +1,16 @@
 use anyhow::Result;
 use application::ClientCommand;
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
 };
 use infrastructure::PgRepository;
-use map_server::{IncomingCommand, MapConfig, MapInstance};
-use tokio::sync::mpsc;
+use map_server::{IncomingCommand, MapConfig, MapInstance, OutboundEvent};
+use std::collections::VecDeque;
+use std::sync::Arc;
+use tokio::sync::{mpsc, Mutex};
 use uuid::Uuid;
 use world::{RoutedCommand, WorldCoordinator, WorldHandle, WorldMessage, WorldStats};
 
@@ -16,6 +18,7 @@ use world::{RoutedCommand, WorldCoordinator, WorldHandle, WorldMessage, WorldSta
 struct AppState {
     world_handle: WorldHandle,
     repo: PgRepository,
+    recent_outbound: Arc<Mutex<VecDeque<WorldOutboundRecord>>>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -69,8 +72,28 @@ enum RouteCommandRequest {
 #[derive(Debug, serde::Deserialize)]
 struct RouteEnvelope {
     session_id: Uuid,
+    #[serde(default)]
+    character_id: Option<Uuid>,
     #[serde(flatten)]
     command: RouteCommandRequest,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+struct WorldOutboundRecord {
+    seq: u64,
+    kind: &'static str,
+    session_id: Option<Uuid>,
+    attacker: Option<Uuid>,
+    defender: Option<Uuid>,
+    x: Option<i32>,
+    y: Option<i32>,
+    damage: Option<i32>,
+    text: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct OutboundQuery {
+    limit: Option<usize>,
 }
 
 async fn healthz() -> &'static str {
@@ -98,6 +121,67 @@ async fn metrics_prometheus() -> impl IntoResponse {
 
 async fn world_stats(State(state): State<AppState>) -> Json<WorldStats> {
     Json(state.world_handle.get_stats().await)
+}
+
+fn outbound_to_record(seq: u64, event: OutboundEvent) -> WorldOutboundRecord {
+    match event {
+        OutboundEvent::Text { session_id, text } => WorldOutboundRecord {
+            seq,
+            kind: "text",
+            session_id: Some(session_id),
+            attacker: None,
+            defender: None,
+            x: None,
+            y: None,
+            damage: None,
+            text: Some(text),
+        },
+        OutboundEvent::Position { session_id, x, y } => WorldOutboundRecord {
+            seq,
+            kind: "position",
+            session_id: Some(session_id),
+            attacker: None,
+            defender: None,
+            x: Some(x),
+            y: Some(y),
+            damage: None,
+            text: None,
+        },
+        OutboundEvent::CombatResult {
+            attacker,
+            defender,
+            damage,
+        } => WorldOutboundRecord {
+            seq,
+            kind: "combat_result",
+            session_id: None,
+            attacker: Some(attacker),
+            defender: Some(defender),
+            x: None,
+            y: None,
+            damage: Some(damage),
+            text: None,
+        },
+    }
+}
+
+async fn world_map_outbound(
+    State(state): State<AppState>,
+    Path(map_id): Path<i32>,
+    Query(query): Query<OutboundQuery>,
+) -> Json<serde_json::Value> {
+    let limit = query.limit.unwrap_or(20).clamp(1, 200);
+    let rows = {
+        let guard = state.recent_outbound.lock().await;
+        let mut collected: Vec<_> = guard.iter().rev().take(limit).cloned().collect();
+        collected.reverse();
+        collected
+    };
+    Json(serde_json::json!({
+        "ok": map_id == 1,
+        "map_id": map_id,
+        "rows": rows,
+    }))
 }
 
 async fn world_broadcast(
@@ -148,7 +232,7 @@ async fn route_command(
 
     state
         .world_handle
-        .route_to_map(map_id, req.session_id, cmd)
+        .route_to_map(map_id, req.session_id, req.character_id, cmd)
         .await;
     Json(serde_json::json!({ "ok": true }))
 }
@@ -198,6 +282,8 @@ async fn main() -> Result<()> {
     let (map_cmd_tx, map_cmd_rx) = mpsc::channel::<IncomingCommand>(8192);
     let (outbound_tx, mut outbound_rx) = mpsc::channel(8192);
     let (persist_tx, mut persist_rx) = mpsc::channel(8192);
+    let recent_outbound: Arc<Mutex<VecDeque<WorldOutboundRecord>>> =
+        Arc::new(Mutex::new(VecDeque::with_capacity(256)));
 
     let (world_map_tx, mut world_map_rx) = mpsc::channel::<RoutedCommand>(8192);
     world_tx
@@ -226,14 +312,26 @@ async fn main() -> Result<()> {
             let _ = map_cmd_tx
                 .send(IncomingCommand {
                     session_id: routed.session_id,
+                    character_id: routed.character_id,
                     command: routed.command,
                 })
                 .await;
         }
     });
 
+    let outbound_store = Arc::clone(&recent_outbound);
     let outbound_task = tokio::spawn(async move {
+        let mut seq = 0_u64;
         while let Some(event) = outbound_rx.recv().await {
+            seq = seq.wrapping_add(1);
+            let record = outbound_to_record(seq, event.clone());
+            {
+                let mut guard = outbound_store.lock().await;
+                guard.push_back(record);
+                while guard.len() > 256 {
+                    let _ = guard.pop_front();
+                }
+            }
             tracing::debug!(?event, "outbound event");
         }
     });
@@ -253,6 +351,7 @@ async fn main() -> Result<()> {
     let state = AppState {
         world_handle,
         repo: repo.clone(),
+        recent_outbound,
     };
 
     let app = Router::new()
@@ -262,6 +361,7 @@ async fn main() -> Result<()> {
         .route("/metrics/prometheus", get(metrics_prometheus))
         .route("/v1/world/stats", get(world_stats))
         .route("/v1/world/broadcast", post(world_broadcast))
+        .route("/v1/world/maps/:map_id/outbound", get(world_map_outbound))
         .route("/v1/world/maps/:map_id/route", post(route_command))
         .with_state(state);
 

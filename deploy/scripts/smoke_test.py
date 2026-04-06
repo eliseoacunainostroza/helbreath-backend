@@ -834,15 +834,10 @@ def test_world_route_command(ctx: Context) -> None:
     assert_true(isinstance(body, dict) and body.get("ok") is True, "world route attack failed")
 
 
-def run_gateway_tcp_route_flow(ctx: Context, client_version: str, label: str) -> None:
+def build_gateway_login_frames(ctx: Context, client_version: str) -> List[bytes]:
     assert_true(bool(ctx.fixture_account_username), "fixture account username missing")
     assert_true(bool(ctx.fixture_account_password), "fixture account password missing")
     assert_true(bool(ctx.fixture_character_id), "fixture character id missing")
-
-    status, before_body, _ = http_json("GET", f"{ctx.world_base}/v1/world/stats")
-    assert_status(status, 200, f"world stats before tcp flow ({label})")
-    assert_true(isinstance(before_body, dict), "world stats before must be object")
-    before_online = int(before_body.get("online_players", 0))
 
     login_payload = (
         ctx.fixture_account_username.encode("utf-8")
@@ -852,7 +847,7 @@ def run_gateway_tcp_route_flow(ctx: Context, client_version: str, label: str) ->
         + client_version.encode("utf-8")
         + b"\0"
     )
-    frames = [
+    return [
         encode_frame(0x0001, login_payload),  # login
         encode_frame(0x0002, b""),  # character list
         encode_frame(0x0004, uuid.UUID(ctx.fixture_character_id).bytes),  # character select
@@ -865,13 +860,34 @@ def run_gateway_tcp_route_flow(ctx: Context, client_version: str, label: str) ->
         ),  # move
     ]
 
-    last_during_online = before_online
 
-    def fetch_online_players() -> int:
-        status, payload, _ = http_json("GET", f"{ctx.world_base}/v1/world/stats")
-        assert_status(status, 200, "world stats poll")
-        assert_true(isinstance(payload, dict), "world stats poll must be object")
-        return int(payload.get("online_players", 0))
+def fetch_world_online_players(ctx: Context, where: str) -> int:
+    status, payload, _ = http_json("GET", f"{ctx.world_base}/v1/world/stats")
+    assert_status(status, 200, where)
+    assert_true(isinstance(payload, dict), f"{where}: payload must be object")
+    return int(payload.get("online_players", 0))
+
+
+def fetch_world_outbound_rows(ctx: Context, limit: int = 120) -> List[Dict[str, Any]]:
+    status, body, _ = http_json("GET", f"{ctx.world_base}/v1/world/maps/1/outbound?limit={limit}")
+    assert_status(status, 200, "world outbound feed")
+    assert_true(isinstance(body, dict), "world outbound feed payload must be object")
+    rows = body.get("rows")
+    assert_true(isinstance(rows, list), "world outbound rows must be list")
+    return [row for row in rows if isinstance(row, dict)]
+
+
+def find_latest_position_session(rows: List[Dict[str, Any]]) -> Optional[str]:
+    for row in reversed(rows):
+        if row.get("kind") == "position" and isinstance(row.get("session_id"), str):
+            return str(row["session_id"])
+    return None
+
+
+def run_gateway_tcp_route_flow(ctx: Context, client_version: str, label: str) -> None:
+    before_online = fetch_world_online_players(ctx, f"world stats before tcp flow ({label})")
+    frames = build_gateway_login_frames(ctx, client_version)
+    last_during_online = before_online
 
     with socket.create_connection((ctx.gateway_tcp_host, ctx.gateway_tcp_port), timeout=3.0) as s:
         for frame in frames:
@@ -879,11 +895,12 @@ def run_gateway_tcp_route_flow(ctx: Context, client_version: str, label: str) ->
             time.sleep(0.05)
 
         became_online = wait_until(
-            lambda: fetch_online_players() >= before_online + 1,
+            lambda: fetch_world_online_players(ctx, f"world stats poll ({label})")
+            >= before_online + 1,
             timeout_sec=6.0,
             interval_sec=0.25,
         )
-        during_online = fetch_online_players()
+        during_online = fetch_world_online_players(ctx, f"world stats during tcp flow ({label})")
         last_during_online = during_online
         assert_true(
             became_online and during_online >= before_online + 1,
@@ -892,12 +909,13 @@ def run_gateway_tcp_route_flow(ctx: Context, client_version: str, label: str) ->
 
         s.sendall(encode_frame(0x02FF, b""))  # logout
         wait_until(
-            lambda: fetch_online_players() <= max(before_online, last_during_online - 1),
+            lambda: fetch_world_online_players(ctx, f"world stats after logout poll ({label})")
+            <= max(before_online, last_during_online - 1),
             timeout_sec=6.0,
             interval_sec=0.25,
         )
 
-    after_online = fetch_online_players()
+    after_online = fetch_world_online_players(ctx, f"world stats after tcp flow ({label})")
     assert_true(
         after_online <= last_during_online,
         f"expected online_players to not increase after logout ({label}) (during={last_during_online}, after={after_online})",
@@ -927,6 +945,116 @@ def test_gateway_tcp_route_flow_modern(ctx: Context) -> None:
         warn("skipping gateway tcp route flow modern (requires --with-db fixture)")
         return
     run_gateway_tcp_route_flow(ctx, "modern-v400", "modern")
+
+
+@register_test(
+    "gateway.tcp.command-matrix",
+    "Gateway TCP command matrix persists inventory/combat and emits outbound events",
+)
+def test_gateway_tcp_command_matrix(ctx: Context) -> None:
+    if not ctx.full_stack:
+        warn("skipping gateway tcp command matrix (run with --full-stack)")
+        return
+    if not ctx.with_db:
+        warn("skipping gateway tcp command matrix (requires --with-db fixture)")
+        return
+    assert_true(bool(ctx.fixture_character_id), "fixture character id missing")
+
+    character_id = ctx.fixture_character_id
+    inv_before = int(
+        psql(
+            ctx,
+            f"SELECT COALESCE((SELECT version FROM inventories WHERE character_id='{character_id}'::uuid LIMIT 1), 0);",
+            quiet=True,
+        )
+        or "0"
+    )
+    combat_before = int(psql(ctx, "SELECT COUNT(*) FROM combat_logs;", quiet=True) or "0")
+    before_online = fetch_world_online_players(ctx, "world stats before tcp command matrix")
+
+    with socket.create_connection((ctx.gateway_tcp_host, ctx.gateway_tcp_port), timeout=3.0) as s:
+        for frame in build_gateway_login_frames(ctx, "4.96"):
+            s.sendall(frame)
+            time.sleep(0.05)
+
+        became_online = wait_until(
+            lambda: fetch_world_online_players(ctx, "world stats poll command matrix")
+            >= before_online + 1,
+            timeout_sec=6.0,
+            interval_sec=0.25,
+        )
+        assert_true(became_online, "gateway tcp command matrix did not enter world")
+
+        time.sleep(0.25)
+        rows = fetch_world_outbound_rows(ctx, limit=180)
+        session_id_raw = find_latest_position_session(rows)
+        assert_true(
+            bool(session_id_raw),
+            "gateway tcp command matrix could not resolve live session_id from world outbound feed",
+        )
+        session_uuid = uuid.UUID(str(session_id_raw))
+
+        command_frames = [
+            encode_frame(0x0101, session_uuid.bytes),  # attack self -> combat
+            encode_frame(
+                0x0102,
+                (7).to_bytes(4, "little", signed=True) + session_uuid.bytes,
+            ),  # cast_skill self -> combat
+            encode_frame(0x0103, uuid.uuid4().bytes),  # pickup_item
+            encode_frame(
+                0x0104,
+                (0).to_bytes(4, "little", signed=True) + (1).to_bytes(4, "little", signed=True),
+            ),  # drop_item
+            encode_frame(0x0105, (0).to_bytes(4, "little", signed=True)),  # use_item
+            encode_frame(0x0106, uuid.uuid4().bytes),  # npc_interaction
+            encode_frame(0x0200, b"smoke chat tcp"),  # chat
+            encode_frame(0x0201, b"smoke_to\0smoke whisper tcp"),  # whisper
+            encode_frame(0x0202, b"smoke guild tcp"),  # guild_chat
+            encode_frame(0x02FE, b""),  # heartbeat
+        ]
+        for frame in command_frames:
+            s.sendall(frame)
+            time.sleep(0.06)
+
+        def has_outbound_markers() -> bool:
+            feed = fetch_world_outbound_rows(ctx, limit=220)
+            text_values = [str(row.get("text", "")) for row in feed]
+            has_combat = any(row.get("kind") == "combat_result" for row in feed)
+            has_npc = any("npc_interaction:" in text for text in text_values)
+            has_chat = any(text == "smoke chat tcp" for text in text_values)
+            has_whisper = any("(whisper->smoke_to) smoke whisper tcp" in text for text in text_values)
+            has_guild = any("[guild] smoke guild tcp" in text for text in text_values)
+            has_heartbeat = any(text == "heartbeat_ack" for text in text_values)
+            return all([has_combat, has_npc, has_chat, has_whisper, has_guild, has_heartbeat])
+
+        observed = wait_until(has_outbound_markers, timeout_sec=8.0, interval_sec=0.3)
+        assert_true(observed, "gateway tcp command matrix did not emit expected outbound markers")
+
+        s.sendall(encode_frame(0x02FF, b""))  # logout
+        wait_until(
+            lambda: fetch_world_online_players(ctx, "world stats after command matrix logout")
+            <= before_online,
+            timeout_sec=6.0,
+            interval_sec=0.25,
+        )
+
+    inv_after = int(
+        psql(
+            ctx,
+            f"SELECT COALESCE((SELECT version FROM inventories WHERE character_id='{character_id}'::uuid LIMIT 1), 0);",
+            quiet=True,
+        )
+        or "0"
+    )
+    combat_after = int(psql(ctx, "SELECT COUNT(*) FROM combat_logs;", quiet=True) or "0")
+    assert_true(
+        inv_after >= inv_before + 3,
+        f"expected inventory version to increase >=3 via pickup/drop/use (before={inv_before}, after={inv_after})",
+    )
+    assert_true(
+        combat_after >= combat_before + 1,
+        f"expected combat logs to increase via attack/cast_skill (before={combat_before}, after={combat_after})",
+    )
 
 
 @register_test("map.ping", "Map ping endpoint")

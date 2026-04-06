@@ -53,6 +53,26 @@ def load_cases(path: Path) -> List[Dict[str, Any]]:
     return [normalize_case(item) for item in data]
 
 
+def ensure_unique_names(cases: List[Dict[str, Any]]) -> int:
+    used: set[str] = set()
+    renamed = 0
+    for idx, case in enumerate(cases):
+        base = str(case.get("name", "")).strip() or f"replay_case_{idx:08d}"
+        candidate = base
+        if candidate in used:
+            protocol = str(case.get("protocol_version", "legacy_v382")).strip().lower()
+            origin = str(case.get("origin", "manual")).strip().lower()
+            candidate = f"{base}_{protocol}_{origin}"
+            seq = 2
+            while candidate in used:
+                candidate = f"{base}_{protocol}_{origin}_{seq}"
+                seq += 1
+            renamed += 1
+        case["name"] = candidate
+        used.add(candidate)
+    return renamed
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Merge replay case JSON fixtures")
     parser.add_argument("--base", required=True, help="canonical replay cases JSON")
@@ -95,12 +115,13 @@ def main() -> int:
         merged.values(),
         key=lambda c: (c["name"], c["protocol_version"], c["phase"]),
     )
+    renamed = ensure_unique_names(merged_list)
     output_path.write_text(
         json.dumps(merged_list, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     print(
-        f"[replay-merge] base={len(base_cases)} incoming={len(incoming_cases)} merged={len(merged_list)} -> {output_path}"
+        f"[replay-merge] base={len(base_cases)} incoming={len(incoming_cases)} merged={len(merged_list)} renamed={renamed} -> {output_path}"
     )
     return 0
 

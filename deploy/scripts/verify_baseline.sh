@@ -11,6 +11,9 @@ RUN_SMOKE="${RUN_SMOKE:-1}"
 RUN_FULL_STACK="${RUN_FULL_STACK:-0}"
 SMOKE_SETUP="${SMOKE_SETUP:-0}"
 RUN_DOCS_HTML="${RUN_DOCS_HTML:-1}"
+RUN_PARITY_REPORTS="${RUN_PARITY_REPORTS:-1}"
+RUN_PARITY_STRICT="${RUN_PARITY_STRICT:-0}"
+RUN_SEED_ADMIN="${RUN_SEED_ADMIN:-1}"
 
 # Evita errores "Text file busy" frecuentes en carpetas compartidas (VirtualBox /mnt/*).
 # Se puede sobrescribir externamente si se requiere otro path.
@@ -41,12 +44,46 @@ if [[ "${RUN_TEST}" == "1" ]]; then
   cargo test --workspace
 fi
 
+if [[ "${RUN_PARITY_REPORTS}" == "1" ]]; then
+  echo "[baseline] refreshing protocol parity reports"
+  python3 deploy/scripts/replay_opcode_report.py \
+    --input crates/net/tests/fixtures/replay_cases.json \
+    --markdown-output docs/protocol_opcode_matrix.md \
+    --json-output docs/protocol_opcode_matrix.json
+  python3 deploy/scripts/replay_capture_todo.py \
+    --input docs/protocol_opcode_matrix.json \
+    --output docs/protocol_capture_todo.md \
+    --protocols "${REAL_PARITY_PROTOCOLS:-legacy_v382,modern_v400}"
+  python3 deploy/scripts/generate_protocol_capture_playbook.py \
+    --input docs/protocol_opcode_matrix.json \
+    --output docs/protocol_capture_playbook.md \
+    --protocols "${REAL_PARITY_PROTOCOLS:-legacy_v382,modern_v400}"
+  python3 deploy/scripts/generate_net_parity_checklist.py \
+    --input docs/protocol_opcode_matrix.json \
+    --output docs/net_legacy_parity_checklist.md
+
+  if [[ "${RUN_PARITY_STRICT}" == "1" ]]; then
+    echo "[baseline] enforcing real protocol parity gate"
+    python3 deploy/scripts/replay_opcode_report.py \
+      --input crates/net/tests/fixtures/replay_cases.json \
+      --markdown-output docs/protocol_opcode_matrix.md \
+      --json-output docs/protocol_opcode_matrix.json \
+      --fail-on-real-gaps \
+      --real-required-protocols "${REAL_PARITY_PROTOCOLS:-legacy_v382,modern_v400}"
+  fi
+fi
+
 if [[ "${RUN_DOCS_HTML}" == "1" ]]; then
   echo "[baseline] python3 deploy/scripts/generate_docs_html.py"
   python3 deploy/scripts/generate_docs_html.py
 fi
 
 if [[ "${RUN_SMOKE}" == "1" ]]; then
+  if [[ "${RUN_SEED_ADMIN}" == "1" ]]; then
+    echo "[baseline] bash deploy/scripts/seed_admin.sh"
+    bash deploy/scripts/seed_admin.sh
+  fi
+
   smoke_cmd=(python3 deploy/scripts/smoke_test.py --launch --with-db)
   if [[ "${SMOKE_SETUP}" == "1" ]]; then
     smoke_cmd+=(--setup)

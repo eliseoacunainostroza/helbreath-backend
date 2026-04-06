@@ -169,6 +169,7 @@ enum WorldRouteCommandRequest {
 #[derive(Debug, serde::Serialize)]
 struct WorldRouteEnvelope {
     session_id: Uuid,
+    character_id: Option<Uuid>,
     #[serde(flatten)]
     command: WorldRouteCommandRequest,
 }
@@ -825,9 +826,16 @@ async fn route_world_command(
     map_id: i32,
     request: WorldRouteCommandRequest,
 ) -> bool {
+    let character_id = ctx
+        .sessions
+        .read()
+        .await
+        .get(&session_id)
+        .and_then(|s| s.character_id);
     let url = format!("{}/v1/world/maps/{map_id}/route", ctx.world_base);
     let envelope = WorldRouteEnvelope {
         session_id,
+        character_id,
         command: request,
     };
     match ctx.http_client.post(url).json(&envelope).send().await {

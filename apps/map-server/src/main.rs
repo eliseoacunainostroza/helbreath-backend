@@ -65,6 +65,7 @@ async fn map_enter_world(
         .cmd_tx
         .send(IncomingCommand {
             session_id: uuid::Uuid::new_v4(),
+            character_id: None,
             command: ClientCommand::EnterWorld,
         })
         .await;
@@ -83,6 +84,7 @@ async fn map_move(
         .cmd_tx
         .send(IncomingCommand {
             session_id: uuid::Uuid::new_v4(),
+            character_id: None,
             command: ClientCommand::Move {
                 x: req.x,
                 y: req.y,

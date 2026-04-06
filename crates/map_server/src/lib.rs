@@ -15,6 +15,7 @@ pub struct MapConfig {
 #[derive(Debug, Clone)]
 pub struct IncomingCommand {
     pub session_id: Uuid,
+    pub character_id: Option<Uuid>,
     pub command: ClientCommand,
 }
 
@@ -196,15 +197,19 @@ impl MapInstance {
         for incoming in commands {
             match incoming.command {
                 ClientCommand::EnterWorld => {
+                    let character_id = incoming.character_id.unwrap_or(incoming.session_id);
                     self.players
                         .entry(incoming.session_id)
                         .or_insert(PlayerState {
-                            character_id: incoming.session_id,
+                            character_id,
                             x: 100,
                             y: 100,
                             hp: 100,
                             mp: 100,
                         });
+                    if let Some(player) = self.players.get_mut(&incoming.session_id) {
+                        player.character_id = character_id;
+                    }
                     MetricsRegistry::set(&METRICS.players_online_total, self.players.len() as u64);
                 }
                 ClientCommand::Move { x, y, .. } => {
@@ -264,18 +269,33 @@ impl MapInstance {
                         .push((incoming.session_id, skill_id, target_id));
                 }
                 ClientCommand::PickupItem { .. } => {
+                    let character_id = self
+                        .players
+                        .get(&incoming.session_id)
+                        .map(|player| player.character_id)
+                        .unwrap_or(incoming.session_id);
                     self.pending_inventory_changes
-                        .push((incoming.session_id, "pickup_item".to_string()));
+                        .push((character_id, "pickup_item".to_string()));
                 }
                 ClientCommand::DropItem { slot, quantity } => {
+                    let character_id = self
+                        .players
+                        .get(&incoming.session_id)
+                        .map(|player| player.character_id)
+                        .unwrap_or(incoming.session_id);
                     self.pending_inventory_changes.push((
-                        incoming.session_id,
+                        character_id,
                         format!("drop_item(slot={slot},qty={quantity})"),
                     ));
                 }
                 ClientCommand::UseItem { slot } => {
+                    let character_id = self
+                        .players
+                        .get(&incoming.session_id)
+                        .map(|player| player.character_id)
+                        .unwrap_or(incoming.session_id);
                     self.pending_inventory_changes
-                        .push((incoming.session_id, format!("use_item(slot={slot})")));
+                        .push((character_id, format!("use_item(slot={slot})")));
                 }
                 ClientCommand::NpcInteraction { npc_id } => {
                     let event_tick = self.tick_index.saturating_add(1);
@@ -327,21 +347,32 @@ impl MapInstance {
         let mut resolved_attacks = Vec::new();
 
         for (attacker, defender) in self.pending_attacks.drain(..) {
-            if !self.players.contains_key(&attacker) {
+            let Some(attacker_state) = self.players.get(&attacker) else {
                 continue;
-            }
+            };
+            let attacker_character_id = attacker_state.character_id;
             let Some(defender_state) = self.players.get_mut(&defender) else {
                 continue;
             };
+            let defender_character_id = defender_state.character_id;
 
             let base = 5_i32;
             let variance = (self.tick_index % 4) as i32;
             let damage = base + variance;
             defender_state.hp = (defender_state.hp - damage).max(0);
-            resolved_attacks.push((attacker, defender, damage, defender_state.hp == 0));
+            resolved_attacks.push((
+                attacker,
+                defender,
+                attacker_character_id,
+                defender_character_id,
+                damage,
+                defender_state.hp == 0,
+            ));
         }
 
-        for (attacker, defender, damage, defeated) in resolved_attacks {
+        for (attacker, defender, attacker_character_id, defender_character_id, damage, defeated) in
+            resolved_attacks
+        {
             let _ = self
                 .outbound_tx
                 .send(OutboundEvent::CombatResult {
@@ -353,8 +384,8 @@ impl MapInstance {
             let _ = self
                 .persist_tx
                 .send(PersistOp::SaveCombatLog {
-                    attacker,
-                    defender,
+                    attacker: attacker_character_id,
+                    defender: defender_character_id,
                     map_id: self.config.map_id,
                     damage,
                 })
@@ -376,6 +407,7 @@ impl MapInstance {
             let Some(caster_state) = self.players.get_mut(&caster) else {
                 continue;
             };
+            let caster_character_id = caster_state.character_id;
             if caster_state.mp < 10 {
                 let _ = self
                     .outbound_tx
@@ -388,12 +420,13 @@ impl MapInstance {
             }
 
             caster_state.mp -= 10;
-            resolved_skills.push((caster, skill_id, target_id));
+            resolved_skills.push((caster, caster_character_id, skill_id, target_id));
         }
 
-        for (caster, skill_id, target_id) in resolved_skills {
+        for (caster, caster_character_id, skill_id, target_id) in resolved_skills {
             if let Some(target) = target_id {
                 if let Some(target_state) = self.players.get_mut(&target) {
+                    let target_character_id = target_state.character_id;
                     let damage = 10 + (skill_id.abs() % 7);
                     target_state.hp = (target_state.hp - damage).max(0);
                     let _ = self
@@ -407,8 +440,8 @@ impl MapInstance {
                     let _ = self
                         .persist_tx
                         .send(PersistOp::SaveCombatLog {
-                            attacker: caster,
-                            defender: target,
+                            attacker: caster_character_id,
+                            defender: target_character_id,
                             map_id: self.config.map_id,
                             damage,
                         })
@@ -496,6 +529,7 @@ mod tests {
 
         tx.send(IncomingCommand {
             session_id: Uuid::new_v4(),
+            character_id: None,
             command: ClientCommand::EnterWorld,
         })
         .await
@@ -503,6 +537,7 @@ mod tests {
 
         tx.send(IncomingCommand {
             session_id: Uuid::new_v4(),
+            character_id: None,
             command: ClientCommand::Heartbeat,
         })
         .await
@@ -540,18 +575,21 @@ mod tests {
 
         tx.send(IncomingCommand {
             session_id: a,
+            character_id: None,
             command: ClientCommand::EnterWorld,
         })
         .await
         .expect("enter world a");
         tx.send(IncomingCommand {
             session_id: b,
+            character_id: None,
             command: ClientCommand::EnterWorld,
         })
         .await
         .expect("enter world b");
         tx.send(IncomingCommand {
             session_id: a,
+            character_id: None,
             command: ClientCommand::Attack { target_id: b },
         })
         .await
@@ -602,18 +640,21 @@ mod tests {
         let who = Uuid::new_v4();
         tx.send(IncomingCommand {
             session_id: who,
+            character_id: None,
             command: ClientCommand::EnterWorld,
         })
         .await
         .expect("enter world");
         tx.send(IncomingCommand {
             session_id: who,
+            character_id: None,
             command: ClientCommand::UseItem { slot: 1 },
         })
         .await
         .expect("use item");
         tx.send(IncomingCommand {
             session_id: who,
+            character_id: None,
             command: ClientCommand::DropItem {
                 slot: 2,
                 quantity: 1,

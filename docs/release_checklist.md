@@ -55,6 +55,12 @@ bash deploy/scripts/seed_admin.sh
 - [ ] Reporte de tendencia soak actualizado: `docs/soak_stability.md`
 - [ ] SLO check aprobado (`make slo-check`).
 - [ ] Replay de protocolo validado (`cargo test -p net replay_cases_json_fixture`).
+- [ ] Reporte de paridad real generado (`make replay-real-gap`) y brechas revisadas.
+- [ ] TODO accionable de captura actualizado (`make replay-real-todo`).
+- [ ] Playbook de ejecucion por escenarios actualizado (`make replay-real-playbook`).
+- [ ] Checklist funcional migrada/probada actualizado (`make replay-real-checklist`).
+- [ ] Refresco integral de artefactos de paridad + html (`make replay-real-refresh`).
+- [ ] Gate estricto de paridad real habilitado cuando corresponda (`make replay-real-parity-check`).
 - [ ] Login/character lifecycle operativos.
 - [ ] Ruteo gateway -> world -> map validado.
 - [ ] Portal admin (login, RBAC, auditoria) validado.

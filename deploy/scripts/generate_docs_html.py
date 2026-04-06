@@ -68,6 +68,23 @@ def render_inline(text: str) -> str:
     return "".join(out)
 
 
+def parse_table_cells(line: str) -> list[str] | None:
+    stripped = line.strip()
+    if not (stripped.startswith("|") and stripped.endswith("|")):
+        return None
+    inner = stripped[1:-1]
+    cells = [cell.strip().replace("\\|", "|") for cell in inner.split("|")]
+    if len(cells) < 2:
+        return None
+    return cells
+
+
+def is_table_separator(cells: list[str]) -> bool:
+    if not cells:
+        return False
+    return all(re.match(r"^:?-{3,}:?$", cell.replace(" ", "")) for cell in cells)
+
+
 def markdown_to_html(markdown_text: str) -> str:
     lines = markdown_text.splitlines()
     html_lines: list[str] = []
@@ -77,6 +94,7 @@ def markdown_to_html(markdown_text: str) -> str:
     code_buffer: list[str] = []
     list_type: str | None = None
     paragraph: list[str] = []
+    table_rows: list[list[str]] = []
 
     def flush_paragraph() -> None:
         nonlocal paragraph
@@ -90,6 +108,38 @@ def markdown_to_html(markdown_text: str) -> str:
         if list_type is not None:
             html_lines.append(f"</{list_type}>")
             list_type = None
+
+    def flush_table() -> None:
+        nonlocal table_rows
+        if not table_rows:
+            return
+
+        if len(table_rows) >= 2 and is_table_separator(table_rows[1]):
+            header = table_rows[0]
+            body = table_rows[2:]
+        else:
+            header = table_rows[0]
+            body = table_rows[1:]
+
+        width = len(header)
+        html_lines.append("<table>")
+        html_lines.append(
+            "<thead><tr>"
+            + "".join(f"<th>{render_inline(cell)}</th>" for cell in header)
+            + "</tr></thead>"
+        )
+        if body:
+            html_lines.append("<tbody>")
+            for row in body:
+                normalized = row[:width] + ([""] * max(0, width - len(row)))
+                html_lines.append(
+                    "<tr>"
+                    + "".join(f"<td>{render_inline(cell)}</td>" for cell in normalized)
+                    + "</tr>"
+                )
+            html_lines.append("</tbody>")
+        html_lines.append("</table>")
+        table_rows = []
 
     for raw in lines:
         line = raw.rstrip("\n")
@@ -118,6 +168,7 @@ def markdown_to_html(markdown_text: str) -> str:
         if stripped.startswith("```"):
             flush_paragraph()
             flush_list()
+            flush_table()
             in_code = True
             code_lang = stripped[3:].strip().lower()
             code_buffer = []
@@ -126,7 +177,16 @@ def markdown_to_html(markdown_text: str) -> str:
         if not stripped:
             flush_paragraph()
             flush_list()
+            flush_table()
             continue
+
+        table_cells = parse_table_cells(stripped)
+        if table_cells is not None:
+            flush_paragraph()
+            flush_list()
+            table_rows.append(table_cells)
+            continue
+        flush_table()
 
         heading = re.match(r"^(#{1,6})\s+(.+)$", stripped)
         if heading:
@@ -161,6 +221,7 @@ def markdown_to_html(markdown_text: str) -> str:
 
     flush_paragraph()
     flush_list()
+    flush_table()
 
     return "\n".join(html_lines)
 

@@ -1,0 +1,237 @@
+{
+  "source": "crates/net/tests/fixtures/replay_cases.json",
+  "counts": {
+    "command": 48,
+    "decode_error": 1,
+    "translate_error": 5
+  },
+  "origin_counts": {
+    "capture": 0,
+    "manual": 53,
+    "seed": 1,
+    "synthetic": 0
+  },
+  "modern_non_seed_command_count": 18,
+  "required_commands": [
+    "login",
+    "character_list",
+    "character_create",
+    "character_delete",
+    "character_select",
+    "enter_world",
+    "move",
+    "attack",
+    "cast_skill",
+    "pickup_item",
+    "drop_item",
+    "use_item",
+    "npc_interaction",
+    "chat",
+    "whisper",
+    "guild_chat",
+    "heartbeat",
+    "logout"
+  ],
+  "coverage_all": {
+    "legacy_v382": [
+      "attack",
+      "cast_skill",
+      "character_create",
+      "character_delete",
+      "character_list",
+      "character_select",
+      "chat",
+      "drop_item",
+      "enter_world",
+      "guild_chat",
+      "heartbeat",
+      "login",
+      "logout",
+      "move",
+      "npc_interaction",
+      "pickup_item",
+      "use_item",
+      "whisper"
+    ],
+    "modern_v400": [
+      "attack",
+      "cast_skill",
+      "character_create",
+      "character_delete",
+      "character_list",
+      "character_select",
+      "chat",
+      "drop_item",
+      "enter_world",
+      "guild_chat",
+      "heartbeat",
+      "login",
+      "logout",
+      "move",
+      "npc_interaction",
+      "pickup_item",
+      "use_item",
+      "whisper"
+    ]
+  },
+  "coverage_real_manual_capture": {
+    "legacy_v382": [
+      "attack",
+      "cast_skill",
+      "character_create",
+      "character_delete",
+      "character_list",
+      "character_select",
+      "chat",
+      "drop_item",
+      "enter_world",
+      "guild_chat",
+      "heartbeat",
+      "login",
+      "logout",
+      "move",
+      "npc_interaction",
+      "pickup_item",
+      "use_item",
+      "whisper"
+    ],
+    "modern_v400": [
+      "attack",
+      "cast_skill",
+      "character_create",
+      "character_delete",
+      "character_list",
+      "character_select",
+      "chat",
+      "drop_item",
+      "enter_world",
+      "guild_chat",
+      "heartbeat",
+      "login",
+      "logout",
+      "move",
+      "npc_interaction",
+      "pickup_item",
+      "use_item",
+      "whisper"
+    ]
+  },
+  "missing_real_required": {
+    "legacy_v382": [],
+    "modern_v400": []
+  },
+  "matrix": {
+    "legacy_v382": {
+      "attack": [
+        257
+      ],
+      "login": [
+        1
+      ],
+      "character_list": [
+        2
+      ],
+      "character_create": [
+        3
+      ],
+      "character_select": [
+        4
+      ],
+      "character_delete": [
+        6
+      ],
+      "enter_world": [
+        5
+      ],
+      "heartbeat": [
+        766
+      ],
+      "move": [
+        256
+      ],
+      "cast_skill": [
+        258
+      ],
+      "pickup_item": [
+        259
+      ],
+      "drop_item": [
+        260
+      ],
+      "use_item": [
+        261
+      ],
+      "npc_interaction": [
+        262
+      ],
+      "chat": [
+        512
+      ],
+      "whisper": [
+        513
+      ],
+      "guild_chat": [
+        514
+      ],
+      "logout": [
+        767
+      ]
+    },
+    "modern_v400": {
+      "attack": [
+        257
+      ],
+      "login": [
+        1
+      ],
+      "character_list": [
+        2
+      ],
+      "character_create": [
+        3
+      ],
+      "character_select": [
+        4
+      ],
+      "character_delete": [
+        6
+      ],
+      "enter_world": [
+        5
+      ],
+      "heartbeat": [
+        766
+      ],
+      "move": [
+        256
+      ],
+      "cast_skill": [
+        258
+      ],
+      "pickup_item": [
+        259
+      ],
+      "drop_item": [
+        260
+      ],
+      "use_item": [
+        261
+      ],
+      "npc_interaction": [
+        262
+      ],
+      "chat": [
+        512
+      ],
+      "whisper": [
+        513
+      ],
+      "guild_chat": [
+        514
+      ],
+      "logout": [
+        767
+      ]
+    }
+  }
+}
