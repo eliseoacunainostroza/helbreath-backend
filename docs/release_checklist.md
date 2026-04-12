@@ -61,6 +61,8 @@ bash deploy/scripts/seed_admin.sh
 - [ ] Checklist funcional migrada/probada actualizado (`make replay-real-checklist`).
 - [ ] Refresco integral de artefactos de paridad + html (`make replay-real-refresh`).
 - [ ] Gate estricto de paridad real habilitado cuando corresponda (`make replay-real-parity-check`).
+- [ ] Gate estricto de cliente real (origen capture) habilitado al cierre (`make replay-capture-parity-check`).
+- [ ] Si se usa `release_gate.sh`, definir `REAL_PARITY_SOURCE_MODE=capture_only` al cerrar paridad de cliente real.
 - [ ] Login/character lifecycle operativos.
 - [ ] Ruteo gateway -> world -> map validado.
 - [ ] Portal admin (login, RBAC, auditoria) validado.

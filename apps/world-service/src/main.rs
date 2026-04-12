@@ -6,11 +6,12 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use infrastructure::PgRepository;
+use infrastructure::{AdminRepository, PgRepository};
 use map_server::{IncomingCommand, MapConfig, MapInstance, OutboundEvent};
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
+use tokio::task::JoinHandle;
 use uuid::Uuid;
 use world::{RoutedCommand, WorldCoordinator, WorldHandle, WorldMessage, WorldStats};
 
@@ -19,6 +20,7 @@ struct AppState {
     world_handle: WorldHandle,
     repo: PgRepository,
     recent_outbound: Arc<Mutex<VecDeque<WorldOutboundRecord>>>,
+    map_manager: Arc<MapRuntimeManager>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -94,6 +96,132 @@ struct WorldOutboundRecord {
 #[derive(Debug, serde::Deserialize)]
 struct OutboundQuery {
     limit: Option<usize>,
+}
+
+struct MapRuntimeHandle {
+    map_task: JoinHandle<()>,
+    router_task: JoinHandle<()>,
+}
+
+struct MapRuntimeManager {
+    world_tx: mpsc::Sender<WorldMessage>,
+    outbound_tx: mpsc::Sender<OutboundEvent>,
+    persist_tx: mpsc::Sender<map_server::PersistOp>,
+    tick_ms: u64,
+    command_budget: usize,
+    runtimes: Mutex<HashMap<i32, MapRuntimeHandle>>,
+}
+
+impl MapRuntimeManager {
+    fn new(
+        world_tx: mpsc::Sender<WorldMessage>,
+        outbound_tx: mpsc::Sender<OutboundEvent>,
+        persist_tx: mpsc::Sender<map_server::PersistOp>,
+        tick_ms: u64,
+        command_budget: usize,
+    ) -> Self {
+        Self {
+            world_tx,
+            outbound_tx,
+            persist_tx,
+            tick_ms,
+            command_budget,
+            runtimes: Mutex::new(HashMap::new()),
+        }
+    }
+
+    async fn activate(&self, map_id: i32) -> Result<bool> {
+        let mut guard = self.runtimes.lock().await;
+        if guard.contains_key(&map_id) {
+            return Ok(false);
+        }
+
+        let (map_cmd_tx, map_cmd_rx) = mpsc::channel::<IncomingCommand>(8192);
+        let (world_map_tx, mut world_map_rx) = mpsc::channel::<RoutedCommand>(8192);
+
+        self.world_tx
+            .send(WorldMessage::RegisterMap {
+                map_id,
+                tx: world_map_tx,
+            })
+            .await
+            .map_err(|_| anyhow::anyhow!("world coordinator unavailable"))?;
+
+        let map_instance = MapInstance::new(
+            MapConfig {
+                map_id,
+                tick_ms: self.tick_ms,
+                command_budget: self.command_budget,
+            },
+            map_cmd_rx,
+            self.outbound_tx.clone(),
+            self.persist_tx.clone(),
+        );
+
+        let map_task = tokio::spawn(map_instance.run());
+        let router_task = tokio::spawn(async move {
+            while let Some(routed) = world_map_rx.recv().await {
+                let _ = map_cmd_tx
+                    .send(IncomingCommand {
+                        session_id: routed.session_id,
+                        character_id: routed.character_id,
+                        command: routed.command,
+                    })
+                    .await;
+            }
+        });
+
+        guard.insert(
+            map_id,
+            MapRuntimeHandle {
+                map_task,
+                router_task,
+            },
+        );
+        tracing::info!(map_id, "map runtime activated");
+        Ok(true)
+    }
+
+    async fn deactivate(&self, map_id: i32) -> Result<bool> {
+        let maybe_handle = {
+            let mut guard = self.runtimes.lock().await;
+            guard.remove(&map_id)
+        };
+
+        let Some(handle) = maybe_handle else {
+            return Ok(false);
+        };
+
+        let _ = self
+            .world_tx
+            .send(WorldMessage::UnregisterMap { map_id })
+            .await;
+
+        handle.map_task.abort();
+        handle.router_task.abort();
+        tracing::info!(map_id, "map runtime deactivated");
+        Ok(true)
+    }
+
+    async fn is_active(&self, map_id: i32) -> bool {
+        let guard = self.runtimes.lock().await;
+        guard.contains_key(&map_id)
+    }
+
+    async fn shutdown(&self) {
+        let handles = {
+            let mut guard = self.runtimes.lock().await;
+            std::mem::take(&mut *guard)
+        };
+        for (map_id, handle) in handles {
+            let _ = self
+                .world_tx
+                .send(WorldMessage::UnregisterMap { map_id })
+                .await;
+            handle.map_task.abort();
+            handle.router_task.abort();
+        }
+    }
 }
 
 async fn healthz() -> &'static str {
@@ -177,11 +305,92 @@ async fn world_map_outbound(
         collected.reverse();
         collected
     };
+    let is_active = state.map_manager.is_active(map_id).await;
     Json(serde_json::json!({
-        "ok": map_id == 1,
+        "ok": is_active,
         "map_id": map_id,
+        "is_active": is_active,
         "rows": rows,
     }))
+}
+
+async fn world_map_activate(
+    State(state): State<AppState>,
+    Path(map_id): Path<i32>,
+) -> Json<serde_json::Value> {
+    let maps = match state.repo.list_maps().await {
+        Ok(maps) => maps,
+        Err(err) => {
+            tracing::error!(error = ?err, map_id, "failed to query map catalog");
+            return Json(serde_json::json!({
+                "ok": false,
+                "error": "catalog_unavailable",
+            }));
+        }
+    };
+    let map_exists = maps.into_iter().any(|map| map.id == map_id);
+    if !map_exists {
+        return Json(serde_json::json!({
+            "ok": false,
+            "error": "map_not_found",
+            "map_id": map_id,
+        }));
+    }
+
+    match state.map_manager.activate(map_id).await {
+        Ok(changed) => Json(serde_json::json!({
+            "ok": true,
+            "map_id": map_id,
+            "changed": changed,
+            "is_active": true,
+        })),
+        Err(err) => {
+            tracing::error!(error = ?err, map_id, "failed to activate map runtime");
+            Json(serde_json::json!({
+                "ok": false,
+                "error": "activation_failed",
+                "map_id": map_id,
+            }))
+        }
+    }
+}
+
+async fn world_map_deactivate(
+    State(state): State<AppState>,
+    Path(map_id): Path<i32>,
+) -> Json<serde_json::Value> {
+    let stats = state.world_handle.get_stats().await;
+    let players_online = stats
+        .players_by_map
+        .iter()
+        .find(|(current_map, _)| *current_map == map_id)
+        .map(|(_, count)| *count)
+        .unwrap_or(0);
+    if players_online > 0 {
+        return Json(serde_json::json!({
+            "ok": false,
+            "error": "map_has_players",
+            "map_id": map_id,
+            "players_online": players_online,
+        }));
+    }
+
+    match state.map_manager.deactivate(map_id).await {
+        Ok(changed) => Json(serde_json::json!({
+            "ok": true,
+            "map_id": map_id,
+            "changed": changed,
+            "is_active": false,
+        })),
+        Err(err) => {
+            tracing::error!(error = ?err, map_id, "failed to deactivate map runtime");
+            Json(serde_json::json!({
+                "ok": false,
+                "error": "deactivation_failed",
+                "map_id": map_id,
+            }))
+        }
+    }
 }
 
 async fn world_broadcast(
@@ -279,45 +488,32 @@ async fn main() -> Result<()> {
     let (world_tx, world_rx) = mpsc::channel::<WorldMessage>(4096);
     let world_handle = WorldHandle::new(world_tx.clone());
 
-    let (map_cmd_tx, map_cmd_rx) = mpsc::channel::<IncomingCommand>(8192);
-    let (outbound_tx, mut outbound_rx) = mpsc::channel(8192);
-    let (persist_tx, mut persist_rx) = mpsc::channel(8192);
+    let (outbound_tx, mut outbound_rx) = mpsc::channel::<OutboundEvent>(8192);
+    let (persist_tx, mut persist_rx) = mpsc::channel::<map_server::PersistOp>(8192);
     let recent_outbound: Arc<Mutex<VecDeque<WorldOutboundRecord>>> =
         Arc::new(Mutex::new(VecDeque::with_capacity(256)));
-
-    let (world_map_tx, mut world_map_rx) = mpsc::channel::<RoutedCommand>(8192);
-    world_tx
-        .send(WorldMessage::RegisterMap {
-            map_id: 1,
-            tx: world_map_tx,
-        })
-        .await?;
-
-    let map_instance = MapInstance::new(
-        MapConfig {
-            map_id: 1,
-            tick_ms: settings.map_tick_ms,
-            command_budget: settings.map_command_budget,
-        },
-        map_cmd_rx,
-        outbound_tx,
-        persist_tx,
-    );
+    let map_manager = Arc::new(MapRuntimeManager::new(
+        world_tx.clone(),
+        outbound_tx.clone(),
+        persist_tx.clone(),
+        settings.map_tick_ms,
+        settings.map_command_budget,
+    ));
 
     let coordinator_task = tokio::spawn(WorldCoordinator::new(world_rx).run());
-    let map_task = tokio::spawn(map_instance.run());
 
-    let router_task = tokio::spawn(async move {
-        while let Some(routed) = world_map_rx.recv().await {
-            let _ = map_cmd_tx
-                .send(IncomingCommand {
-                    session_id: routed.session_id,
-                    character_id: routed.character_id,
-                    command: routed.command,
-                })
-                .await;
+    let mut startup_maps = repo.list_active_map_ids().await.unwrap_or_default();
+    if startup_maps.is_empty() {
+        startup_maps.push(1);
+    }
+    startup_maps.sort_unstable();
+    startup_maps.dedup();
+
+    for map_id in startup_maps {
+        if let Err(err) = map_manager.activate(map_id).await {
+            tracing::error!(error = ?err, map_id, "failed to activate map runtime at startup");
         }
-    });
+    }
 
     let outbound_store = Arc::clone(&recent_outbound);
     let outbound_task = tokio::spawn(async move {
@@ -352,6 +548,7 @@ async fn main() -> Result<()> {
         world_handle,
         repo: repo.clone(),
         recent_outbound,
+        map_manager: Arc::clone(&map_manager),
     };
 
     let app = Router::new()
@@ -361,6 +558,8 @@ async fn main() -> Result<()> {
         .route("/metrics/prometheus", get(metrics_prometheus))
         .route("/v1/world/stats", get(world_stats))
         .route("/v1/world/broadcast", post(world_broadcast))
+        .route("/v1/world/maps/:map_id/activate", post(world_map_activate))
+        .route("/v1/world/maps/:map_id/deactivate", post(world_map_deactivate))
         .route("/v1/world/maps/:map_id/outbound", get(world_map_outbound))
         .route("/v1/world/maps/:map_id/route", post(route_command))
         .with_state(state);
@@ -377,9 +576,8 @@ async fn main() -> Result<()> {
     tokio::signal::ctrl_c().await?;
     tracing::info!("world-service shutdown requested");
 
+    map_manager.shutdown().await;
     coordinator_task.abort();
-    map_task.abort();
-    router_task.abort();
     outbound_task.abort();
     persist_task.abort();
     http_task.abort();

@@ -46,10 +46,10 @@ Convencion: `migrada` indica implementacion en Rust; `probada_auto` indica cober
 
 | funcionalidad original esperada | migrada | probada_auto | observacion |
 |---|---|---|---|
-| Decodificacion formal server->client en `crates/net` (simetria completa de protocolo) | [ ] | [ ] | No se observa parser tipado server->client en esta crate. |
-| Capa de cifrado/obfuscacion wire legacy dedicada | [ ] | [ ] | No hay primitivas de cifrado en `crates/net/src/lib.rs`. |
-| Compresion/descompresion de payloads de red en capa net | [ ] | [ ] | No hay etapa explicita de compresion en la traduccion actual. |
-| Catalogo exhaustivo de codigos de error legacy (wire-level) | [ ] | [ ] | Maneja `DecodeError`/`TranslateError`, pero no una matriz legacy completa documentada. |
+| Decodificacion formal server->client en `crates/net` (simetria completa de protocolo) | [x] | [x] | Implementado con `ServerMessage` + `translate_server_packet_for_version` + tests unitarios. |
+| Capa de cifrado/obfuscacion wire legacy dedicada | [x] | [x] | Implementado con `obfuscate_wire_payload`/`deobfuscate_wire_payload` + test de roundtrip. |
+| Compresion/descompresion de payloads de red en capa net | [x] | [x] | Implementado con `compress_wire_payload`/`decompress_wire_payload` + test de roundtrip. |
+| Catalogo exhaustivo de codigos de error legacy (wire-level) | [x] | [x] | Implementado con `WireErrorCode` + `parse_wire_error_code` y uso en decode server->client. |
 
 ## 4) Resumen de Cobertura Real
 

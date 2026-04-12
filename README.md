@@ -203,6 +203,7 @@ Incluye:
 - panel visual de estado por servicio (`health` + `systemd`)
 - refresco automatico del dashboard
 - acciones por servicio (`start`, `restart`, `stop`)
+- tabla de mapas con estado activo/inactivo y activacion desde portal
 
 Autenticación/sesiones:
 - `POST /api/v1/admin/login`
@@ -225,6 +226,8 @@ Operaciones:
   - `GET /api/v1/admin/characters/:character_id/inventory`
 - Mundo:
   - `GET /api/v1/admin/world/maps`
+  - `POST /api/v1/admin/world/maps/:map_id/activate`
+  - `POST /api/v1/admin/world/maps/:map_id/deactivate`
   - `POST /api/v1/admin/world/maps/:map_id/restart`
   - `POST /api/v1/admin/world/broadcast`
   - `POST /api/v1/admin/world/events/:event_code/toggle`
@@ -490,6 +493,11 @@ make replay-real-parity-check
 # opcional: exigir solo modern durante rollout
 REAL_PARITY_PROTOCOLS=modern_v400 make replay-real-parity-check
 
+# gate estricto de cliente real (solo origen capture)
+make replay-capture-parity-check
+# opcional: exigir solo modern en captura cliente
+REAL_PARITY_PROTOCOLS=modern_v400 make replay-capture-parity-check
+
 # validar replay fixture en tests
 cargo test -p net replay_cases_json_fixture -- --nocapture
 
@@ -507,6 +515,7 @@ Flujo recomendado para paridad real con cliente:
 - Ejecutar playbook detallado por escenarios en `docs/protocol_capture_playbook.md` (`make replay-real-playbook`).
 - Revisar checklist funcional migrada/probada en `docs/net_legacy_parity_checklist.md` (`make replay-real-checklist`).
 - Cuando `faltantes_real` sea `ninguno` para los protocolos objetivo, habilitar `make replay-real-parity-check` en el gate de release.
+- Para cerrar paridad de cliente real, exigir `make replay-capture-parity-check` (origen `capture`).
 
 ## 13) Ejecución local
 
@@ -531,6 +540,19 @@ cargo run -p hb-world-service
 cargo run -p hb-chat-service
 cargo run -p hb-jobs-runner
 ```
+
+Checklist rapido para cierre de migracion en servidor (tests + DB + restart limpio):
+
+```bash
+export HB_DATABASE_URL='postgres://hb:hbpass@127.0.0.1:5432/helbreath'
+make verify-stack-green
+```
+
+Opciones utiles del script:
+- `RUN_SMOKE=0 make verify-stack-green` (si quieres omitir smoke temporalmente)
+- `RESTART_SERVICES=0 make verify-stack-green` (si solo quieres validar suite y DB)
+- `INSTALL_BINARIES=0 make verify-stack-green` (si no quieres copiar binarios a `bin/`)
+- `RUN_SMOKE_LAUNCH=1 make verify-stack-green` (smoke con `--launch`; recompila debug y consume mas RAM)
 
 Nota para VirtualBox/carpeta compartida:
 - si aparece `Text file busy (os error 26)` durante `cargo`, use target local Linux:
@@ -576,6 +598,11 @@ RUN_SOAK=1 SOAK_ITERATIONS=3 SOAK_DELAY_SECONDS=3 bash deploy/scripts/release_ga
 RUN_SOAK=1 RUN_SLO_CHECK=1 \
 SLO_MIN_ITERATIONS=3 SLO_MAX_FAILED_ITERATIONS=0 \
 SLO_MIN_PASS_RATE=100 SLO_MAX_AVG_ITERATION_SECONDS=30 SLO_MAX_P95_ITERATION_SECONDS=35 \
+bash deploy/scripts/release_gate.sh
+
+# opcional: exigir paridad estricta solo con capturas de cliente real
+RUN_PARITY_STRICT=1 REAL_PARITY_SOURCE_MODE=capture_only \
+REAL_PARITY_PROTOCOLS=modern_v400 \
 bash deploy/scripts/release_gate.sh
 
 # secuencia canary operativa

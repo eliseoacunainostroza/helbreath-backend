@@ -8,7 +8,7 @@ use axum::{
     Json, Router,
 };
 use chrono::{DateTime, Duration, Utc};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration as StdDuration;
 use tokio::process::Command;
@@ -125,6 +125,24 @@ struct ServiceLogsQuery {
 struct WorldStatsWire {
     online_players: u64,
     players_by_map: Vec<(i32, u64)>,
+}
+
+#[derive(Debug, Default, serde::Deserialize)]
+struct WorldMapControlWire {
+    ok: bool,
+    changed: Option<bool>,
+    error: Option<String>,
+    players_online: Option<u64>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+struct WorldMapSummary {
+    map_id: i32,
+    code: String,
+    name: String,
+    tick_ms: i32,
+    players_online: u64,
+    is_active: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -307,6 +325,11 @@ async fn admin_dashboard_page() -> Html<&'static str> {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Helbreath Admin - Dashboard</title>
   <style>
+    html, body {
+      width: 100%;
+      max-width: 100%;
+      overflow-x: hidden;
+    }
     :root {
       --bg: #f0f4fb;
       --panel: #ffffff;
@@ -331,9 +354,9 @@ async fn admin_dashboard_page() -> Html<&'static str> {
       min-height: 100vh;
     }
     .shell {
-      max-width: 1180px;
+      width: min(1600px, calc(100vw - 2rem));
       margin: 0 auto;
-      padding: 1.1rem;
+      padding: 1.1rem 0;
     }
     .topbar {
       display: flex;
@@ -426,6 +449,24 @@ async fn admin_dashboard_page() -> Html<&'static str> {
       vertical-align: middle;
       white-space: nowrap;
     }
+    th.sortable {
+      cursor: pointer;
+      user-select: none;
+      transition: color .12s ease;
+    }
+    th.sortable:hover {
+      color: #0f172a;
+    }
+    th.sortable[data-sort-dir="asc"]::after {
+      content: " ▲";
+      font-size: 0.68rem;
+      color: #334155;
+    }
+    th.sortable[data-sort-dir="desc"]::after {
+      content: " ▼";
+      font-size: 0.68rem;
+      color: #334155;
+    }
     .badge {
       display: inline-block;
       border-radius: 999px;
@@ -455,12 +496,47 @@ async fn admin_dashboard_page() -> Html<&'static str> {
       color: var(--text);
       min-width: 140px;
     }
+    .map-tools {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.6rem;
+    }
+    .map-tools .field-input {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    .map-count {
+      white-space: nowrap;
+    }
+    .map-table-wrap {
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      max-height: 330px;
+      overflow-y: auto;
+      overflow-x: auto;
+    }
+    .map-table-wrap table {
+      margin: 0;
+    }
+    .map-table-wrap thead th {
+      position: sticky;
+      top: 0;
+      background: #fff;
+      z-index: 1;
+    }
     .log-tools {
       display: flex;
       flex-wrap: wrap;
       align-items: center;
       gap: 0.5rem;
       margin-bottom: 0.6rem;
+    }
+    .logs-full {
+      margin-top: 0.75rem;
+      width: 100%;
+      margin-left: 0;
+      transform: none;
     }
     .log-output {
       margin: 0;
@@ -540,15 +616,31 @@ async fn admin_dashboard_page() -> Html<&'static str> {
       </article>
 
       <article class="card">
-        <h2 class="panel-title">Jugadores por mapa</h2>
-        <ul id="maps-list" class="clean"></ul>
+        <h2 class="panel-title">Mapas activos y control</h2>
+        <div class="map-tools">
+          <input id="maps-search" class="field-input" type="text" placeholder="Buscar mapa por nombre, codigo o id">
+          <span id="maps-count" class="small map-count">0/0</span>
+        </div>
+        <div class="table-wrap map-table-wrap">
+          <table id="world-maps-table">
+            <thead>
+              <tr>
+                <th class="sortable" data-map-sort="map">Mapa</th>
+                <th class="sortable" data-map-sort="players">Jugadores</th>
+                <th class="sortable" data-map-sort="status">Estado</th>
+                <th>Accion</th>
+              </tr>
+            </thead>
+            <tbody id="world-maps-body"></tbody>
+          </table>
+        </div>
         <h2 class="panel-title" style="margin-top:1rem;">Errores recientes</h2>
         <ul id="errors-list" class="clean"></ul>
         <div class="toast" id="toast"></div>
       </article>
     </section>
 
-    <section class="card" style="margin-top:0.75rem;">
+    <section class="card logs-full">
       <h2 class="panel-title">Logs de servicios</h2>
       <div class="log-tools">
         <select id="logs-service" class="field-input"></select>
@@ -564,8 +656,14 @@ async fn admin_dashboard_page() -> Html<&'static str> {
       auto: true,
       timer: null,
       services: [],
+      worldMaps: [],
+      mapSearchQuery: '',
+      mapSortKey: 'map',
+      mapSortDir: 'asc',
       selectedService: ''
     };
+    document.documentElement.scrollLeft = 0;
+    document.body.scrollLeft = 0;
 
     function token() {
       return localStorage.getItem('hb_admin_token') || '';
@@ -613,17 +711,99 @@ async fn admin_dashboard_page() -> Html<&'static str> {
       return true;
     }
 
+    function escapeHtml(value) {
+      const text = (value === null || value === undefined) ? '' : String(value);
+      return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function compareValues(a, b, dir) {
+      if (a < b) return dir === 'asc' ? -1 : 1;
+      if (a > b) return dir === 'asc' ? 1 : -1;
+      return 0;
+    }
+
+    function sortWorldMaps(rows) {
+      const key = state.mapSortKey || 'map';
+      const dir = state.mapSortDir === 'desc' ? 'desc' : 'asc';
+
+      return rows.slice().sort((left, right) => {
+        if (key === 'players') {
+          const playersDiff = compareValues(
+            Number(left.players_online || 0),
+            Number(right.players_online || 0),
+            dir
+          );
+          if (playersDiff !== 0) return playersDiff;
+          return compareValues(Number(left.map_id || 0), Number(right.map_id || 0), 'asc');
+        }
+
+        if (key === 'status') {
+          const statusDiff = compareValues(
+            left.is_active ? 1 : 0,
+            right.is_active ? 1 : 0,
+            dir
+          );
+          if (statusDiff !== 0) return statusDiff;
+          return compareValues(Number(left.map_id || 0), Number(right.map_id || 0), 'asc');
+        }
+
+        const leftName = `${left.name || ''}`.toLowerCase();
+        const rightName = `${right.name || ''}`.toLowerCase();
+        const byName = compareValues(leftName, rightName, dir);
+        if (byName !== 0) return byName;
+
+        const leftCode = `${left.code || ''}`.toLowerCase();
+        const rightCode = `${right.code || ''}`.toLowerCase();
+        const byCode = compareValues(leftCode, rightCode, dir);
+        if (byCode !== 0) return byCode;
+
+        return compareValues(Number(left.map_id || 0), Number(right.map_id || 0), 'asc');
+      });
+    }
+
+    function updateMapSortIndicators() {
+      const headers = document.querySelectorAll('#world-maps-table th[data-map-sort]');
+      headers.forEach((header) => {
+        const key = header.getAttribute('data-map-sort') || '';
+        if (key === state.mapSortKey) {
+          header.setAttribute('data-sort-dir', state.mapSortDir);
+        } else {
+          header.removeAttribute('data-sort-dir');
+        }
+      });
+    }
+
+    function setMapSort(key) {
+      if (!key) return;
+      if (state.mapSortKey === key) {
+        state.mapSortDir = state.mapSortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.mapSortKey = key;
+        state.mapSortDir = 'asc';
+      }
+      renderWorldMaps(state.worldMaps);
+    }
+
+    function initMapSortHandlers() {
+      const headers = document.querySelectorAll('#world-maps-table th[data-map-sort]');
+      headers.forEach((header) => {
+        const key = header.getAttribute('data-map-sort') || '';
+        header.title = 'Doble click para ordenar';
+        header.ondblclick = () => setMapSort(key);
+      });
+      updateMapSortIndicators();
+    }
+
     function renderDashboard(payload) {
       document.getElementById('k-connections').textContent = payload.active_connections || 0;
       document.getElementById('k-online').textContent = payload.online_players || 0;
       document.getElementById('k-tick').textContent = Number(payload.avg_tick_ms || 0).toFixed(1);
       document.getElementById('k-overruns').textContent = payload.tick_overruns || 0;
-
-      const maps = Array.isArray(payload.players_by_map) ? payload.players_by_map : [];
-      const mapsNode = document.getElementById('maps-list');
-      mapsNode.innerHTML = maps.length
-        ? maps.map(m => `<li><strong>Mapa ${m.map_id}</strong> <span class="small">(${m.players} jugadores)</span></li>`).join('')
-        : '<li class="small">Sin datos de mapas.</li>';
 
       const errors = Array.isArray(payload.recent_errors) ? payload.recent_errors : [];
       const errNode = document.getElementById('errors-list');
@@ -652,12 +832,76 @@ async fn admin_dashboard_page() -> Html<&'static str> {
       renderLogServiceOptions(state.services);
     }
 
+    function renderWorldMaps(rows) {
+      state.worldMaps = Array.isArray(rows) ? rows : [];
+      const query = state.mapSearchQuery.trim().toLowerCase();
+      const filteredMaps = query
+        ? state.worldMaps.filter((map) => {
+            const haystack = [
+              map.map_id,
+              map.code || '',
+              map.name || ''
+            ]
+              .join(' ')
+              .toLowerCase();
+            return haystack.includes(query);
+          })
+        : state.worldMaps;
+
+      const body = document.getElementById('world-maps-body');
+      const countNode = document.getElementById('maps-count');
+      countNode.textContent = `${filteredMaps.length}/${state.worldMaps.length}`;
+
+      if (!state.worldMaps.length) {
+        body.innerHTML = '<tr><td colspan="4" class="small">No hay mapas disponibles.</td></tr>';
+        return;
+      }
+      if (!filteredMaps.length) {
+        body.innerHTML = '<tr><td colspan="4" class="small">No hay mapas para ese filtro.</td></tr>';
+        return;
+      }
+
+      const sortedMaps = sortWorldMaps(filteredMaps);
+      body.innerHTML = sortedMaps.map((map) => {
+        const mapId = Number(map.map_id || 0);
+        const isActive = !!map.is_active;
+        const playersOnline = Number(map.players_online || 0);
+        const status = isActive ? 'active' : 'inactive';
+        const badge = isActive ? 'ok' : 'warn';
+        const title = `${escapeHtml(map.name || 'Mapa')} (${escapeHtml(map.code || '-')})`;
+        const activateButton = isActive
+          ? '<button disabled>Activo</button>'
+          : `<button onclick="activateMap(${mapId})">Activar</button>`;
+        const deactivateButton = isActive
+          ? (
+              playersOnline > 0
+                ? '<button class="danger" disabled title="No se puede desactivar con jugadores conectados">Desactivar</button>'
+                : `<button class="danger" onclick="deactivateMap(${mapId})">Desactivar</button>`
+            )
+          : '';
+        return `
+          <tr>
+            <td><strong>${title}</strong><div class="small">ID ${mapId} - tick ${Number(map.tick_ms || 0)} ms</div></td>
+            <td>${playersOnline}</td>
+            <td><span class="badge ${badge}">${status}</span></td>
+            <td>
+              ${activateButton}
+              ${deactivateButton}
+              <button onclick="restartMap(${mapId})">Reiniciar</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+      updateMapSortIndicators();
+    }
+
     function renderLogServiceOptions(rows) {
       const select = document.getElementById('logs-service');
       const current = state.selectedService;
       select.innerHTML = rows.map(s => `<option value="${s.service}">${s.label || s.service}</option>`).join('');
       const hasCurrent = rows.some(s => s.service === current);
-      const next = hasCurrent ? current : (rows[0]?.service || '');
+      const firstService = rows.length > 0 ? rows[0].service : '';
+      const next = hasCurrent ? current : (firstService || '');
       state.selectedService = next;
       select.value = next;
     }
@@ -715,9 +959,71 @@ async fn admin_dashboard_page() -> Html<&'static str> {
       renderServices(Array.isArray(body.services) ? body.services : []);
     }
 
+    async function loadWorldMaps() {
+      const res = await fetch('/api/v1/admin/world/maps', { headers: authHeaders() });
+      if (!ensureAuth(res)) return;
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setToast(body.error || 'No se pudo cargar estado de mapas.', true);
+        return;
+      }
+      const body = await res.json();
+      renderWorldMaps(Array.isArray(body.maps) ? body.maps : []);
+    }
+
     async function refreshAll() {
-      await Promise.all([loadDashboard(), loadServices()]);
+      await Promise.all([loadDashboard(), loadServices(), loadWorldMaps()]);
       setToast('Datos actualizados.');
+    }
+
+    async function activateMap(mapId) {
+      setToast(`Activando mapa ${mapId}...`);
+      const res = await fetch(`/api/v1/admin/world/maps/${mapId}/activate`, {
+        method: 'POST',
+        headers: authHeaders()
+      });
+      if (!ensureAuth(res)) return;
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setToast(body.error || `No se pudo activar el mapa ${mapId}.`, true);
+        return;
+      }
+      setToast(body.note || `Mapa ${mapId} activado.`);
+      await loadWorldMaps();
+      await loadDashboard();
+    }
+
+    async function deactivateMap(mapId) {
+      setToast(`Desactivando mapa ${mapId}...`);
+      const res = await fetch(`/api/v1/admin/world/maps/${mapId}/deactivate`, {
+        method: 'POST',
+        headers: authHeaders()
+      });
+      if (!ensureAuth(res)) return;
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setToast(body.error || `No se pudo desactivar el mapa ${mapId}.`, true);
+        return;
+      }
+      setToast(body.note || `Mapa ${mapId} desactivado.`);
+      await loadWorldMaps();
+      await loadDashboard();
+    }
+
+    async function restartMap(mapId) {
+      setToast(`Solicitando reinicio del mapa ${mapId}...`);
+      const res = await fetch(`/api/v1/admin/world/maps/${mapId}/restart`, {
+        method: 'POST',
+        headers: authHeaders()
+      });
+      if (!ensureAuth(res)) return;
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setToast(body.error || `No se pudo reiniciar el mapa ${mapId}.`, true);
+        return;
+      }
+      setToast(body.note || `Mapa ${mapId}: reinicio solicitado.`);
+      await loadWorldMaps();
     }
 
     async function controlService(service, action) {
@@ -741,6 +1047,9 @@ async fn admin_dashboard_page() -> Html<&'static str> {
 
     window.controlService = controlService;
     window.showLogs = showLogs;
+    window.activateMap = activateMap;
+    window.deactivateMap = deactivateMap;
+    window.restartMap = restartMap;
 
     function setAutoMode(enabled) {
       state.auto = enabled;
@@ -769,7 +1078,12 @@ async fn admin_dashboard_page() -> Html<&'static str> {
         loadServiceLogs(state.selectedService);
       }
     };
+    document.getElementById('maps-search').oninput = (e) => {
+      state.mapSearchQuery = (e.target.value || '').trim();
+      renderWorldMaps(state.worldMaps);
+    };
 
+    initMapSortHandlers();
     setAutoMode(true);
     refreshAll();
   </script>
@@ -1363,6 +1677,35 @@ async fn list_maps(
         .list_maps()
         .await
         .map_err(|e| ApiError::internal(format!("db error: {e}")))?;
+    let active_map_ids: HashSet<i32> = state
+        .repo
+        .list_active_map_ids()
+        .await
+        .map_err(|e| ApiError::internal(format!("db error: {e}")))?
+        .into_iter()
+        .collect();
+
+    let world_base = format!("http://{}", state.settings.world_bind);
+    let world_stats = fetch_world_stats(&state.http_client, &world_base).await;
+    let players_by_map: HashMap<i32, u64> = world_stats
+        .map(|stats| stats.players_by_map.into_iter().collect())
+        .unwrap_or_default();
+
+    let summaries: Vec<WorldMapSummary> = maps
+        .into_iter()
+        .map(|map| {
+            let players_online = players_by_map.get(&map.id).copied().unwrap_or(0);
+            let is_active = active_map_ids.contains(&map.id) || players_online > 0;
+            WorldMapSummary {
+                map_id: map.id,
+                code: map.code,
+                name: map.name,
+                tick_ms: map.tick_ms,
+                players_online,
+                is_active,
+            }
+        })
+        .collect();
 
     audit_action(
         &state,
@@ -1370,12 +1713,114 @@ async fn list_maps(
         "world.maps.list",
         "world",
         "maps",
-        serde_json::json!({"count": maps.len()}),
+        serde_json::json!({
+            "count": summaries.len(),
+            "active": summaries.iter().filter(|map| map.is_active).count(),
+        }),
         None,
     )
     .await;
 
-    Ok(Json(serde_json::json!({ "maps": maps })))
+    Ok(Json(serde_json::json!({
+        "maps": summaries,
+        "active_count": summaries.iter().filter(|map| map.is_active).count(),
+    })))
+}
+
+async fn activate_map(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(map_id): Path<i32>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let principal = authenticate(&state, &headers, Permission::WorldWrite).await?;
+    let world_base = format!("http://{}", state.settings.world_bind);
+    let world_result =
+        invoke_world_map_control(&state.http_client, &world_base, map_id, "activate").await?;
+
+    let persisted = state
+        .repo
+        .activate_map(map_id)
+        .await
+        .map_err(|e| ApiError::internal(format!("db error: {e}")))?;
+    if !persisted {
+        let _ = invoke_world_map_control(&state.http_client, &world_base, map_id, "deactivate")
+            .await;
+        return Err(ApiError::bad_request("map not found"));
+    }
+
+    audit_action(
+        &state,
+        &principal,
+        "world.map.activate",
+        "map",
+        &map_id.to_string(),
+        serde_json::json!({
+            "runtime_changed": world_result.changed.unwrap_or(false),
+        }),
+        None,
+    )
+    .await;
+
+    let note = if world_result.changed.unwrap_or(false) {
+        "map runtime activated and persisted"
+    } else {
+        "map runtime already active; registry state confirmed"
+    };
+
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "map_id": map_id,
+        "runtime_changed": world_result.changed.unwrap_or(false),
+        "note": note
+    })))
+}
+
+async fn deactivate_map(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(map_id): Path<i32>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let principal = authenticate(&state, &headers, Permission::WorldWrite).await?;
+    let world_base = format!("http://{}", state.settings.world_bind);
+    let world_result =
+        invoke_world_map_control(&state.http_client, &world_base, map_id, "deactivate").await?;
+
+    let persisted = state
+        .repo
+        .deactivate_map(map_id)
+        .await
+        .map_err(|e| ApiError::internal(format!("db error: {e}")))?;
+    if !persisted {
+        let _ =
+            invoke_world_map_control(&state.http_client, &world_base, map_id, "activate").await;
+        return Err(ApiError::bad_request("map not found"));
+    }
+
+    audit_action(
+        &state,
+        &principal,
+        "world.map.deactivate",
+        "map",
+        &map_id.to_string(),
+        serde_json::json!({
+            "runtime_changed": world_result.changed.unwrap_or(false),
+        }),
+        None,
+    )
+    .await;
+
+    let note = if world_result.changed.unwrap_or(false) {
+        "map runtime deactivated and persisted"
+    } else {
+        "map runtime already inactive; registry state confirmed"
+    };
+
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "map_id": map_id,
+        "runtime_changed": world_result.changed.unwrap_or(false),
+        "note": note
+    })))
 }
 
 async fn restart_map_instance(
@@ -1384,13 +1829,21 @@ async fn restart_map_instance(
     Path(map_id): Path<i32>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let principal = authenticate(&state, &headers, Permission::WorldWrite).await?;
+    let world_base = format!("http://{}", state.settings.world_bind);
 
-    let map_base = format!("http://{}", state.settings.map_bind);
-    let map_ok = probe_service_health(&state.http_client, &map_base).await == "ok";
-    if !map_ok {
-        return Err(ApiError::internal(
-            "map service unavailable; restart command not dispatched",
-        ));
+    let stopped =
+        invoke_world_map_control(&state.http_client, &world_base, map_id, "deactivate").await?;
+    let started =
+        invoke_world_map_control(&state.http_client, &world_base, map_id, "activate").await?;
+    let persisted = state
+        .repo
+        .activate_map(map_id)
+        .await
+        .map_err(|e| ApiError::internal(format!("db error: {e}")))?;
+    if !persisted {
+        let _ = invoke_world_map_control(&state.http_client, &world_base, map_id, "deactivate")
+            .await;
+        return Err(ApiError::bad_request("map not found"));
     }
 
     audit_action(
@@ -1399,14 +1852,20 @@ async fn restart_map_instance(
         "world.map.restart",
         "map",
         &map_id.to_string(),
-        serde_json::json!({}),
+        serde_json::json!({
+            "runtime_stop_changed": stopped.changed.unwrap_or(false),
+            "runtime_start_changed": started.changed.unwrap_or(false),
+        }),
         None,
     )
     .await;
 
     Ok(Json(serde_json::json!({
         "ok": true,
-        "note": "restart command accepted and queued"
+        "map_id": map_id,
+        "runtime_stop_changed": stopped.changed.unwrap_or(false),
+        "runtime_start_changed": started.changed.unwrap_or(false),
+        "note": "map runtime restarted"
     })))
 }
 
@@ -1803,6 +2262,59 @@ async fn fetch_world_stats(client: &reqwest::Client, world_base: &str) -> Option
     resp.json::<WorldStatsWire>().await.ok()
 }
 
+async fn invoke_world_map_control(
+    client: &reqwest::Client,
+    world_base: &str,
+    map_id: i32,
+    action: &str,
+) -> Result<WorldMapControlWire, ApiError> {
+    let url = format!("{world_base}/v1/world/maps/{map_id}/{action}");
+    let response = client
+        .post(url)
+        .send()
+        .await
+        .map_err(|e| ApiError::internal(format!("world map {action} failed: {e}")))?;
+
+    if !response.status().is_success() {
+        if response.status() == StatusCode::NOT_FOUND {
+            return Err(ApiError::internal(
+                "world-service no soporta /v1/world/maps/* (actualiza/reinicia hb-world-service)",
+            ));
+        }
+        return Err(ApiError::internal(format!(
+            "world map {action} rejected with status {}",
+            response.status()
+        )));
+    }
+
+    let body: WorldMapControlWire = response
+        .json()
+        .await
+        .unwrap_or_else(|_| WorldMapControlWire::default());
+    if body.ok {
+        return Ok(body);
+    }
+
+    match body.error.as_deref().unwrap_or("unknown_error") {
+        "map_not_found" => Err(ApiError::bad_request("map not found")),
+        "map_has_players" => Err(ApiError {
+            status: StatusCode::CONFLICT,
+            message: format!(
+                "cannot {action} map while players are online ({})",
+                body.players_online.unwrap_or(0)
+            ),
+        }),
+        "catalog_unavailable" => Err(ApiError::internal(
+            "world map catalog unavailable while validating map",
+        )),
+        "activation_failed" => Err(ApiError::internal("world runtime activation failed")),
+        "deactivation_failed" => Err(ApiError::internal("world runtime deactivation failed")),
+        _ => Err(ApiError::internal(format!(
+            "world map {action} failed with unknown error"
+        ))),
+    }
+}
+
 fn map_admin_role(role: AdminRole) -> Role {
     match role {
         AdminRole::SuperAdmin => Role::SuperAdmin,
@@ -1910,6 +2422,14 @@ async fn main() -> Result<()> {
             get(character_inventory),
         )
         .route("/api/v1/admin/world/maps", get(list_maps))
+        .route(
+            "/api/v1/admin/world/maps/:map_id/activate",
+            post(activate_map),
+        )
+        .route(
+            "/api/v1/admin/world/maps/:map_id/deactivate",
+            post(deactivate_map),
+        )
         .route(
             "/api/v1/admin/world/maps/:map_id/restart",
             post(restart_map_instance),

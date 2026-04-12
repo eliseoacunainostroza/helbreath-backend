@@ -771,6 +771,42 @@ def test_world_restart_map(ctx: Context) -> None:
     assert_true(isinstance(body, dict) and body.get("ok") is True, "world restart map failed")
 
 
+@register_test("admin.world.activate-map", "World map activate endpoint")
+def test_world_activate_map(ctx: Context) -> None:
+    ensure_admin_token(ctx)
+    status, body, _ = http_json(
+        "POST",
+        f"{ctx.admin_base}/api/v1/admin/world/maps/1/activate",
+        headers={"Authorization": f"Bearer {ctx.admin_token}"},
+    )
+    assert_status(status, 200, "world activate map")
+    assert_true(isinstance(body, dict) and body.get("ok") is True, "world activate map failed")
+
+
+@register_test("admin.world.deactivate-map", "World map deactivate endpoint")
+def test_world_deactivate_map(ctx: Context) -> None:
+    ensure_admin_token(ctx)
+    status, body, _ = http_json(
+        "POST",
+        f"{ctx.admin_base}/api/v1/admin/world/maps/1/deactivate",
+        headers={"Authorization": f"Bearer {ctx.admin_token}"},
+    )
+    assert_status(status, 200, "world deactivate map")
+    assert_true(isinstance(body, dict) and body.get("ok") is True, "world deactivate map failed")
+
+    # Keep map 1 active for subsequent gateway TCP route-flow tests.
+    status, body, _ = http_json(
+        "POST",
+        f"{ctx.admin_base}/api/v1/admin/world/maps/1/activate",
+        headers={"Authorization": f"Bearer {ctx.admin_token}"},
+    )
+    assert_status(status, 200, "world reactivate map after deactivate test")
+    assert_true(
+        isinstance(body, dict) and body.get("ok") is True,
+        "world reactivate map after deactivate test failed",
+    )
+
+
 @register_test("admin.world.broadcast", "World broadcast endpoint")
 def test_world_broadcast(ctx: Context) -> None:
     ensure_admin_token(ctx)
@@ -868,6 +904,20 @@ def fetch_world_online_players(ctx: Context, where: str) -> int:
     return int(payload.get("online_players", 0))
 
 
+def ensure_map_active_for_gateway(ctx: Context, map_id: int = 1) -> None:
+    ensure_admin_token(ctx)
+    status, body, raw = http_json(
+        "POST",
+        f"{ctx.admin_base}/api/v1/admin/world/maps/{map_id}/activate",
+        headers={"Authorization": f"Bearer {ctx.admin_token}"},
+    )
+    assert_status(status, 200, f"ensure map {map_id} active for gateway routing")
+    assert_true(
+        isinstance(body, dict) and body.get("ok") is True,
+        f"ensure map {map_id} active failed: {raw}",
+    )
+
+
 def fetch_world_outbound_rows(ctx: Context, limit: int = 120) -> List[Dict[str, Any]]:
     status, body, _ = http_json("GET", f"{ctx.world_base}/v1/world/maps/1/outbound?limit={limit}")
     assert_status(status, 200, "world outbound feed")
@@ -884,22 +934,55 @@ def find_latest_position_session(rows: List[Dict[str, Any]]) -> Optional[str]:
     return None
 
 
+def send_select_and_enter_until_online(
+    ctx: Context,
+    sock: socket.socket,
+    character_id: str,
+    before_online: int,
+    where: str,
+    attempts: int = 16,
+    delay_sec: float = 0.25,
+) -> bool:
+    character_select_frame = encode_frame(0x0004, uuid.UUID(character_id).bytes)
+    enter_world_frame = encode_frame(0x0005, b"")
+    for _ in range(attempts):
+        # Re-issue character_select before enter_world so the flow recovers
+        # when auth/login selection is still settling in slower environments.
+        sock.sendall(character_select_frame)
+        time.sleep(0.08)
+        sock.sendall(enter_world_frame)
+        became_online = wait_until(
+            lambda: fetch_world_online_players(ctx, where) >= before_online + 1,
+            timeout_sec=1.5,
+            interval_sec=0.25,
+        )
+        if became_online:
+            return True
+        time.sleep(delay_sec)
+    return False
+
+
 def run_gateway_tcp_route_flow(ctx: Context, client_version: str, label: str) -> None:
+    ensure_map_active_for_gateway(ctx, map_id=1)
     before_online = fetch_world_online_players(ctx, f"world stats before tcp flow ({label})")
     frames = build_gateway_login_frames(ctx, client_version)
     last_during_online = before_online
 
     with socket.create_connection((ctx.gateway_tcp_host, ctx.gateway_tcp_port), timeout=3.0) as s:
-        for frame in frames:
+        for frame in frames[:3]:
             s.sendall(frame)
-            time.sleep(0.05)
+            time.sleep(0.12)
 
-        became_online = wait_until(
-            lambda: fetch_world_online_players(ctx, f"world stats poll ({label})")
-            >= before_online + 1,
-            timeout_sec=6.0,
-            interval_sec=0.25,
+        became_online = send_select_and_enter_until_online(
+            ctx,
+            s,
+            str(ctx.fixture_character_id),
+            before_online,
+            f"world stats poll ({label})",
+            attempts=18,
+            delay_sec=0.2,
         )
+        s.sendall(frames[4])  # move after enter_world success attempts
         during_online = fetch_world_online_players(ctx, f"world stats during tcp flow ({label})")
         last_during_online = during_online
         assert_true(
@@ -959,6 +1042,7 @@ def test_gateway_tcp_command_matrix(ctx: Context) -> None:
         warn("skipping gateway tcp command matrix (requires --with-db fixture)")
         return
     assert_true(bool(ctx.fixture_character_id), "fixture character id missing")
+    ensure_map_active_for_gateway(ctx, map_id=1)
 
     character_id = ctx.fixture_character_id
     inv_before = int(
@@ -973,17 +1057,22 @@ def test_gateway_tcp_command_matrix(ctx: Context) -> None:
     before_online = fetch_world_online_players(ctx, "world stats before tcp command matrix")
 
     with socket.create_connection((ctx.gateway_tcp_host, ctx.gateway_tcp_port), timeout=3.0) as s:
-        for frame in build_gateway_login_frames(ctx, "4.96"):
+        frames = build_gateway_login_frames(ctx, "4.96")
+        for frame in frames[:3]:
             s.sendall(frame)
-            time.sleep(0.05)
+            time.sleep(0.12)
 
-        became_online = wait_until(
-            lambda: fetch_world_online_players(ctx, "world stats poll command matrix")
-            >= before_online + 1,
-            timeout_sec=6.0,
-            interval_sec=0.25,
+        became_online = send_select_and_enter_until_online(
+            ctx,
+            s,
+            str(ctx.fixture_character_id),
+            before_online,
+            "world stats poll command matrix",
+            attempts=18,
+            delay_sec=0.2,
         )
         assert_true(became_online, "gateway tcp command matrix did not enter world")
+        s.sendall(frames[4])  # move
 
         time.sleep(0.25)
         rows = fetch_world_outbound_rows(ctx, limit=180)

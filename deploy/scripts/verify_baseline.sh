@@ -53,11 +53,13 @@ if [[ "${RUN_PARITY_REPORTS}" == "1" ]]; then
   python3 deploy/scripts/replay_capture_todo.py \
     --input docs/protocol_opcode_matrix.json \
     --output docs/protocol_capture_todo.md \
-    --protocols "${REAL_PARITY_PROTOCOLS:-legacy_v382,modern_v400}"
+    --protocols "${REAL_PARITY_PROTOCOLS:-legacy_v382,modern_v400}" \
+    --source-mode "${REAL_PARITY_SOURCE_MODE:-capture_only}"
   python3 deploy/scripts/generate_protocol_capture_playbook.py \
     --input docs/protocol_opcode_matrix.json \
     --output docs/protocol_capture_playbook.md \
-    --protocols "${REAL_PARITY_PROTOCOLS:-legacy_v382,modern_v400}"
+    --protocols "${REAL_PARITY_PROTOCOLS:-legacy_v382,modern_v400}" \
+    --source-mode "${REAL_PARITY_SOURCE_MODE:-capture_only}"
   python3 deploy/scripts/generate_net_parity_checklist.py \
     --input docs/protocol_opcode_matrix.json \
     --output docs/net_legacy_parity_checklist.md
@@ -69,7 +71,8 @@ if [[ "${RUN_PARITY_REPORTS}" == "1" ]]; then
       --markdown-output docs/protocol_opcode_matrix.md \
       --json-output docs/protocol_opcode_matrix.json \
       --fail-on-real-gaps \
-      --real-required-protocols "${REAL_PARITY_PROTOCOLS:-legacy_v382,modern_v400}"
+      --real-required-protocols "${REAL_PARITY_PROTOCOLS:-legacy_v382,modern_v400}" \
+      --real-origin-mode "${REAL_PARITY_SOURCE_MODE:-manual_capture}"
   fi
 fi
 

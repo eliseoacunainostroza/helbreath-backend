@@ -158,22 +158,30 @@ NET_CORE_FEATURES: List[Tuple[str, bool, bool, str]] = [
     ),
 ]
 
-KNOWN_GAPS: List[Tuple[str, str]] = [
+KNOWN_GAPS: List[Tuple[str, bool, bool, str]] = [
     (
         "Decodificacion formal server->client en `crates/net` (simetria completa de protocolo)",
-        "No se observa parser tipado server->client en esta crate.",
+        True,
+        True,
+        "Implementado con `ServerMessage` + `translate_server_packet_for_version` + tests unitarios.",
     ),
     (
         "Capa de cifrado/obfuscacion wire legacy dedicada",
-        "No hay primitivas de cifrado en `crates/net/src/lib.rs`.",
+        True,
+        True,
+        "Implementado con `obfuscate_wire_payload`/`deobfuscate_wire_payload` + test de roundtrip.",
     ),
     (
         "Compresion/descompresion de payloads de red en capa net",
-        "No hay etapa explicita de compresion en la traduccion actual.",
+        True,
+        True,
+        "Implementado con `compress_wire_payload`/`decompress_wire_payload` + test de roundtrip.",
     ),
     (
         "Catalogo exhaustivo de codigos de error legacy (wire-level)",
-        "Maneja `DecodeError`/`TranslateError`, pero no una matriz legacy completa documentada.",
+        True,
+        True,
+        "Implementado con `WireErrorCode` + `parse_wire_error_code` y uso en decode server->client.",
     ),
 ]
 
@@ -255,10 +263,13 @@ def make_markdown(report_path: Path, payload: dict) -> str:
 
     coverage_all = as_set_map(payload, "coverage_all")
     coverage_real = as_set_map(payload, "coverage_real_manual_capture")
+    coverage_capture = as_set_map(payload, "coverage_capture_only")
     legacy_all = coverage_all.get("legacy_v382", set())
     modern_all = coverage_all.get("modern_v400", set())
     legacy_real = coverage_real.get("legacy_v382", set())
     modern_real = coverage_real.get("modern_v400", set())
+    legacy_capture = coverage_capture.get("legacy_v382", set())
+    modern_capture = coverage_capture.get("modern_v400", set())
 
     legacy_opcode_map = as_opcode_map(payload, "legacy_v382")
     modern_opcode_map = as_opcode_map(payload, "modern_v400")
@@ -270,7 +281,7 @@ def make_markdown(report_path: Path, payload: dict) -> str:
     lines.append("")
     lines.append(
         "Convencion: `migrada` indica implementacion en Rust; `probada_auto` indica cobertura por tests/replay; "
-        "`probada_real_*` indica evidencia con cliente real."
+        "`probada_real_*` indica evidencia manual/capture; `probada_capture_*` exige origen `capture` (cliente real)."
     )
     lines.append("")
 
@@ -288,9 +299,9 @@ def make_markdown(report_path: Path, payload: dict) -> str:
     lines.append("")
     lines.append(
         "| comando | fase_legacy | payload_legacy | opcode_legacy | opcode_modern | "
-        "migrada_decode_map | migrada_parse_payload | migrada_gate_sesion | probada_auto | probada_smoke_tcp | probada_real_legacy | probada_real_modern | evidencia_parse |"
+        "migrada_decode_map | migrada_parse_payload | migrada_gate_sesion | probada_auto | probada_smoke_tcp | probada_real_legacy | probada_real_modern | probada_capture_legacy | probada_capture_modern | evidencia_parse |"
     )
-    lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+    lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for command in required:
         migrated_decode_map = command in legacy_all and command in modern_all
         migrated_parse_payload = command in legacy_all
@@ -299,6 +310,8 @@ def make_markdown(report_path: Path, payload: dict) -> str:
         smoke_tcp_tested = command in SMOKE_TCP_COMMANDS
         real_l = command in legacy_real
         real_m = command in modern_real
+        capture_l = command in legacy_capture
+        capture_m = command in modern_capture
         lines.append(
             "| "
             + f"`{command}`"
@@ -325,6 +338,10 @@ def make_markdown(report_path: Path, payload: dict) -> str:
             + " | "
             + bool_to_check(real_m)
             + " | "
+            + bool_to_check(capture_l)
+            + " | "
+            + bool_to_check(capture_m)
+            + " | "
             + COMMAND_PARSE_EVIDENCE.get(command, "n/a")
             + " |"
         )
@@ -334,8 +351,10 @@ def make_markdown(report_path: Path, payload: dict) -> str:
     lines.append("")
     lines.append("| funcionalidad original esperada | migrada | probada_auto | observacion |")
     lines.append("|---|---|---|---|")
-    for gap, note in KNOWN_GAPS:
-        lines.append(f"| {gap} | {bool_to_check(False)} | {bool_to_check(False)} | {note} |")
+    for gap, migrated, tested, note in KNOWN_GAPS:
+        lines.append(
+            f"| {gap} | {bool_to_check(migrated)} | {bool_to_check(tested)} | {note} |"
+        )
     lines.append("")
 
     lines.append("## 4) Resumen de Cobertura Real")
@@ -343,11 +362,19 @@ def make_markdown(report_path: Path, payload: dict) -> str:
     lines.append(f"- Comandos requeridos: {len(required)}")
     lines.append(f"- Legacy real: {len(legacy_real)}/{len(required)}")
     lines.append(f"- Modern real: {len(modern_real)}/{len(required)}")
+    lines.append(f"- Legacy capture (cliente real): {len(legacy_capture)}/{len(required)}")
+    lines.append(f"- Modern capture (cliente real): {len(modern_capture)}/{len(required)}")
     lines.append(
         f"- Pendientes legacy real: {', '.join(x for x in required if x not in legacy_real) or 'ninguno'}"
     )
     lines.append(
         f"- Pendientes modern real: {', '.join(x for x in required if x not in modern_real) or 'ninguno'}"
+    )
+    lines.append(
+        f"- Pendientes legacy capture: {', '.join(x for x in required if x not in legacy_capture) or 'ninguno'}"
+    )
+    lines.append(
+        f"- Pendientes modern capture: {', '.join(x for x in required if x not in modern_capture) or 'ninguno'}"
     )
     lines.append(
         f"- Cobertura smoke tcp gateway: {sum(1 for x in required if x in SMOKE_TCP_COMMANDS)}/{len(required)}"

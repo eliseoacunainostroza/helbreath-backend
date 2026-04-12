@@ -76,14 +76,27 @@ def as_set_map(payload: dict, key: str) -> Dict[str, Set[str]]:
     return out
 
 
-def make_markdown(report: dict, protocols: List[str], source: Path) -> str:
+def select_maps(report: dict, source_mode: str) -> tuple[Dict[str, List[str]], Dict[str, Set[str]], str]:
+    if source_mode == "capture_only":
+        return (
+            report.get("missing_capture_required", {}),
+            as_set_map(report, "coverage_capture_only"),
+            "captura_cliente",
+        )
+    return (
+        report.get("missing_real_required", {}),
+        as_set_map(report, "coverage_real_manual_capture"),
+        "real_manual_capture",
+    )
+
+
+def make_markdown(report: dict, protocols: List[str], source: Path, source_mode: str) -> str:
     required_commands = [
         str(x).lower() for x in report.get("required_commands", COMMAND_ORDER)
     ]
     if not required_commands:
         required_commands = list(COMMAND_ORDER)
-    missing_by_protocol = report.get("missing_real_required", {})
-    coverage_real_map = as_set_map(report, "coverage_real_manual_capture")
+    missing_by_protocol, coverage_real_map, mode_label = select_maps(report, source_mode)
     lines: List[str] = []
     lines.append("# TODO de Captura Real de Protocolo")
     lines.append("")
@@ -101,8 +114,8 @@ def make_markdown(report: dict, protocols: List[str], source: Path) -> str:
 
         lines.append(f"## {protocol}")
         lines.append("")
-        lines.append(f"- Cobertura real pendiente: {len(missing)}/{len(required_commands)}")
-        lines.append(f"- Cobertura real lograda : {len(done)}/{len(required_commands)}")
+        lines.append(f"- Cobertura ({mode_label}) pendiente: {len(missing)}/{len(required_commands)}")
+        lines.append(f"- Cobertura ({mode_label}) lograda : {len(done)}/{len(required_commands)}")
         if not missing:
             lines.append("- Estado: sin brechas pendientes.")
             lines.append("")
@@ -127,7 +140,10 @@ def make_markdown(report: dict, protocols: List[str], source: Path) -> str:
     lines.append("1. Iniciar captura (`make replay-capture-pipeline`).")
     lines.append("2. Ejecutar acciones pendientes del protocolo objetivo.")
     lines.append("3. Detener captura y validar `docs/protocol_opcode_matrix.md`.")
-    lines.append("4. Repetir hasta dejar `faltantes_real` en `ninguno`.")
+    if source_mode == "capture_only":
+        lines.append("4. Repetir hasta dejar `faltantes_capture_cliente` en `ninguno`.")
+    else:
+        lines.append("4. Repetir hasta dejar `faltantes_real_manual_capture` en `ninguno`.")
     lines.append("")
     return "\n".join(lines)
 
@@ -151,6 +167,12 @@ def main() -> int:
         default="legacy_v382,modern_v400",
         help="comma-separated protocol list to include",
     )
+    parser.add_argument(
+        "--source-mode",
+        choices=["manual_capture", "capture_only"],
+        default="capture_only",
+        help="coverage source mode from json report",
+    )
     args = parser.parse_args()
 
     source = Path(args.input)
@@ -159,7 +181,7 @@ def main() -> int:
     if not protocols:
         protocols = ["legacy_v382", "modern_v400"]
 
-    markdown = make_markdown(report, protocols, source)
+    markdown = make_markdown(report, protocols, source, args.source_mode)
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(markdown + "\n", encoding="utf-8")

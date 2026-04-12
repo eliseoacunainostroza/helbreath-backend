@@ -65,6 +65,7 @@ def build_matrix(
     int,
     Dict[str, Set[str]],
     Dict[str, Set[str]],
+    Dict[str, Set[str]],
 ]:
     matrix: Dict[str, Dict[str, Set[int]]] = {}
     counts: Dict[str, int] = {"command": 0, "decode_error": 0, "translate_error": 0}
@@ -72,6 +73,7 @@ def build_matrix(
     modern_non_seed_commands: Set[str] = set()
     command_coverage_all: Dict[str, Set[str]] = {}
     command_coverage_real: Dict[str, Set[str]] = {}
+    command_coverage_capture: Dict[str, Set[str]] = {}
     for case in cases:
         protocol = normalize_protocol(case.get("protocol_version"))
         origin = str(case.get("origin", "manual")).strip().lower()
@@ -92,6 +94,8 @@ def build_matrix(
         command_coverage_all.setdefault(protocol, set()).add(command)
         if origin in {"manual", "capture"}:
             command_coverage_real.setdefault(protocol, set()).add(command)
+        if origin == "capture":
+            command_coverage_capture.setdefault(protocol, set()).add(command)
         if protocol == "modern_v400" and origin in {"manual", "capture"}:
             modern_non_seed_commands.add(command)
         per_protocol = matrix.setdefault(protocol, {})
@@ -103,6 +107,7 @@ def build_matrix(
         len(modern_non_seed_commands),
         command_coverage_all,
         command_coverage_real,
+        command_coverage_capture,
     )
 
 
@@ -121,6 +126,7 @@ def make_markdown(
     modern_non_seed_command_count: int,
     command_coverage_all: Dict[str, Set[str]],
     command_coverage_real: Dict[str, Set[str]],
+    command_coverage_capture: Dict[str, Set[str]],
     source_path: Path,
 ) -> str:
     lines: List[str] = []
@@ -145,15 +151,22 @@ def make_markdown(
         f"Comandos requeridos ({len(REQUIRED_COMMANDS)}): " + ", ".join(REQUIRED_COMMANDS)
     )
     lines.append("")
-    lines.append("| protocolo | cobertura_total | cobertura_real_manual_capture | faltantes_real |")
-    lines.append("|---|---:|---:|---|")
+    lines.append(
+        "| protocolo | cobertura_total | cobertura_real_manual_capture | cobertura_capture_cliente | faltantes_real_manual_capture | faltantes_capture_cliente |"
+    )
+    lines.append("|---|---:|---:|---:|---|---|")
     protocols_for_coverage = sorted(
-        set(command_coverage_all.keys()) | set(command_coverage_real.keys()) | {"legacy_v382", "modern_v400"}
+        set(command_coverage_all.keys())
+        | set(command_coverage_real.keys())
+        | set(command_coverage_capture.keys())
+        | {"legacy_v382", "modern_v400"}
     )
     for protocol in protocols_for_coverage:
         covered_all = command_coverage_all.get(protocol, set())
         covered_real = command_coverage_real.get(protocol, set())
+        covered_capture = command_coverage_capture.get(protocol, set())
         missing_real = required_missing(covered_real)
+        missing_capture = required_missing(covered_capture)
         lines.append(
             "| "
             + protocol
@@ -162,7 +175,11 @@ def make_markdown(
             + " | "
             + f"{len(covered_real)}/{len(REQUIRED_COMMANDS)}"
             + " | "
+            + f"{len(covered_capture)}/{len(REQUIRED_COMMANDS)}"
+            + " | "
             + (", ".join(missing_real) if missing_real else "ninguno")
+            + " | "
+            + (", ".join(missing_capture) if missing_capture else "ninguno")
             + " |"
         )
     lines.append("")
@@ -202,6 +219,7 @@ def print_console(
     modern_non_seed_command_count: int,
     command_coverage_all: Dict[str, Set[str]],
     command_coverage_real: Dict[str, Set[str]],
+    command_coverage_capture: Dict[str, Set[str]],
 ) -> None:
     print(
         f"[replay-opcode-report] cases: command={counts['command']} decode_error={counts['decode_error']} translate_error={counts['translate_error']}"
@@ -214,17 +232,24 @@ def print_console(
         f"[replay-opcode-report] modern non-seed commands (manual/capture): {modern_non_seed_command_count}"
     )
     protocols_for_coverage = sorted(
-        set(command_coverage_all.keys()) | set(command_coverage_real.keys()) | {"legacy_v382", "modern_v400"}
+        set(command_coverage_all.keys())
+        | set(command_coverage_real.keys())
+        | set(command_coverage_capture.keys())
+        | {"legacy_v382", "modern_v400"}
     )
     for protocol in protocols_for_coverage:
         covered_all = command_coverage_all.get(protocol, set())
         covered_real = command_coverage_real.get(protocol, set())
+        covered_capture = command_coverage_capture.get(protocol, set())
         missing_real = required_missing(covered_real)
+        missing_capture = required_missing(covered_capture)
         print(
-            f"[replay-opcode-report] coverage {protocol}: total={len(covered_all)}/{len(REQUIRED_COMMANDS)} real={len(covered_real)}/{len(REQUIRED_COMMANDS)}"
+            f"[replay-opcode-report] coverage {protocol}: total={len(covered_all)}/{len(REQUIRED_COMMANDS)} real={len(covered_real)}/{len(REQUIRED_COMMANDS)} capture={len(covered_capture)}/{len(REQUIRED_COMMANDS)}"
         )
         if missing_real:
             print(f"[replay-opcode-report] missing real {protocol}: {', '.join(missing_real)}")
+        if missing_capture:
+            print(f"[replay-opcode-report] missing capture {protocol}: {', '.join(missing_capture)}")
     for protocol in sorted(matrix.keys()):
         print(f"[{protocol}]")
         for command in sorted(matrix[protocol].keys()):
@@ -259,6 +284,12 @@ def main() -> int:
         default="legacy_v382,modern_v400",
         help="comma-separated protocol list to enforce with --fail-on-real-gaps",
     )
+    parser.add_argument(
+        "--real-origin-mode",
+        default="manual_capture",
+        choices=["manual_capture", "capture_only"],
+        help="coverage source mode for --fail-on-real-gaps (manual_capture|capture_only)",
+    )
     args = parser.parse_args()
 
     source = Path(args.input)
@@ -270,6 +301,7 @@ def main() -> int:
         modern_non_seed_command_count,
         command_coverage_all,
         command_coverage_real,
+        command_coverage_capture,
     ) = build_matrix(cases)
     print_console(
         matrix,
@@ -278,6 +310,7 @@ def main() -> int:
         modern_non_seed_command_count,
         command_coverage_all,
         command_coverage_real,
+        command_coverage_capture,
     )
 
     markdown = make_markdown(
@@ -287,6 +320,7 @@ def main() -> int:
         modern_non_seed_command_count,
         command_coverage_all,
         command_coverage_real,
+        command_coverage_capture,
         source,
     )
     md_path = Path(args.markdown_output)
@@ -307,11 +341,24 @@ def main() -> int:
             "coverage_real_manual_capture": {
                 protocol: sorted(values) for protocol, values in command_coverage_real.items()
             },
+            "coverage_capture_only": {
+                protocol: sorted(values) for protocol, values in command_coverage_capture.items()
+            },
             "missing_real_required": {
                 protocol: required_missing(command_coverage_real.get(protocol, set()))
                 for protocol in sorted(
                     set(command_coverage_all.keys())
                     | set(command_coverage_real.keys())
+                    | set(command_coverage_capture.keys())
+                    | {"legacy_v382", "modern_v400"}
+                )
+            },
+            "missing_capture_required": {
+                protocol: required_missing(command_coverage_capture.get(protocol, set()))
+                for protocol in sorted(
+                    set(command_coverage_all.keys())
+                    | set(command_coverage_real.keys())
+                    | set(command_coverage_capture.keys())
                     | {"legacy_v382", "modern_v400"}
                 )
             },
@@ -332,12 +379,18 @@ def main() -> int:
             if chunk.strip()
         ]
         failures: List[str] = []
+        if args.real_origin_mode == "capture_only":
+            coverage_map = command_coverage_capture
+            fail_label = "capture"
+        else:
+            coverage_map = command_coverage_real
+            fail_label = "real"
         for protocol in protocols:
-            missing = required_missing(command_coverage_real.get(protocol, set()))
+            missing = required_missing(coverage_map.get(protocol, set()))
             if missing:
                 failures.append(f"{protocol}: {', '.join(missing)}")
         if failures:
-            print("[replay-opcode-report] FAIL real parity gaps detected:")
+            print(f"[replay-opcode-report] FAIL {fail_label} parity gaps detected:")
             for item in failures:
                 print(f"  - {item}")
             return 1

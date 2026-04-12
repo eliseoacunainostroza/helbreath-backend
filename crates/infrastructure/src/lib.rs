@@ -359,6 +359,7 @@ pub trait AdminRepository: Send + Sync {
     async fn list_maps(&self) -> Result<Vec<MapRuntimeInfo>>;
     async fn list_active_map_ids(&self) -> Result<Vec<i32>>;
     async fn activate_map(&self, map_id: i32) -> Result<bool>;
+    async fn deactivate_map(&self, map_id: i32) -> Result<bool>;
 
     async fn create_sanction(&self, input: CreateSanctionInput) -> Result<()>;
 
@@ -964,6 +965,37 @@ impl AdminRepository for PgRepository {
                         END,
                         stopped_at = NULL
                     "#,
+            )
+            .bind(map_id)
+            .execute(&self.pool),
+        )
+        .await?;
+
+        Ok(true)
+    }
+
+    async fn deactivate_map(&self, map_id: i32) -> Result<bool> {
+        let map_exists = self
+            .timed_query(
+                sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM maps WHERE id=$1)")
+                    .bind(map_id)
+                    .fetch_one(&self.pool),
+            )
+            .await?;
+
+        if !map_exists {
+            return Ok(false);
+        }
+
+        self.timed_query(
+            sqlx::query(
+                r#"
+                UPDATE map_instances
+                SET status='stopped',
+                    stopped_at = COALESCE(stopped_at, now())
+                WHERE map_id=$1
+                  AND status='active'
+                "#,
             )
             .bind(map_id)
             .execute(&self.pool),

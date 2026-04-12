@@ -122,8 +122,9 @@ def parse_protocols(raw: str) -> List[str]:
     return [chunk.strip().lower() for chunk in raw.split(",") if chunk.strip()]
 
 
-def missing_for_protocol(payload: dict, protocol: str) -> List[str]:
-    missing = payload.get("missing_real_required", {})
+def missing_for_protocol(payload: dict, protocol: str, source_mode: str) -> List[str]:
+    key = "missing_capture_required" if source_mode == "capture_only" else "missing_real_required"
+    missing = payload.get(key, {})
     if not isinstance(missing, dict):
         return []
     raw = missing.get(protocol, [])
@@ -177,7 +178,7 @@ def render_protocol_table(lines: List[str], protocol: str, pending: List[str]) -
     lines.append("")
 
 
-def make_markdown(payload: dict, source: Path, protocols: List[str]) -> str:
+def make_markdown(payload: dict, source: Path, protocols: List[str], source_mode: str) -> str:
     lines: List[str] = []
     lines.append("# Playbook de Captura Real de Protocolo")
     lines.append("")
@@ -187,8 +188,10 @@ def make_markdown(payload: dict, source: Path, protocols: List[str]) -> str:
         "Este playbook transforma brechas de paridad real en sesiones accionables de captura con cliente real."
     )
     lines.append("")
+    lines.append(f"Modo de cobertura: `{source_mode}`")
+    lines.append("")
     for protocol in protocols:
-        render_protocol_table(lines, protocol, missing_for_protocol(payload, protocol))
+        render_protocol_table(lines, protocol, missing_for_protocol(payload, protocol, source_mode))
 
     lines.append("## Flujo Operativo")
     lines.append("")
@@ -220,6 +223,12 @@ def main() -> int:
         default="legacy_v382,modern_v400",
         help="comma-separated protocol list",
     )
+    parser.add_argument(
+        "--source-mode",
+        choices=["manual_capture", "capture_only"],
+        default="capture_only",
+        help="coverage source mode from opcode report json",
+    )
     args = parser.parse_args()
 
     source = Path(args.input)
@@ -228,7 +237,7 @@ def main() -> int:
     if not protocols:
         protocols = ["legacy_v382", "modern_v400"]
 
-    markdown = make_markdown(payload, source, protocols)
+    markdown = make_markdown(payload, source, protocols, args.source_mode)
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(markdown + "\n", encoding="utf-8")

@@ -16,6 +16,9 @@ pub enum WorldMessage {
         map_id: i32,
         tx: mpsc::Sender<RoutedCommand>,
     },
+    UnregisterMap {
+        map_id: i32,
+    },
     RouteToMap {
         map_id: i32,
         session_id: Uuid,
@@ -106,6 +109,12 @@ impl WorldCoordinator {
                     self.map_senders.insert(map_id, tx);
                     self.players_by_map.entry(map_id).or_insert(0);
                     tracing::info!(map_id, "map registered");
+                }
+                WorldMessage::UnregisterMap { map_id } => {
+                    self.map_senders.remove(&map_id);
+                    self.players_by_map.remove(&map_id);
+                    self.session_map.retain(|_, current_map| *current_map != map_id);
+                    tracing::info!(map_id, "map unregistered");
                 }
                 WorldMessage::RouteToMap {
                     map_id,

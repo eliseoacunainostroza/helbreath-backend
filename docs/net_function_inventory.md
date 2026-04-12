@@ -25,9 +25,23 @@ incluyendo funciones de produccion, helpers internos y pruebas unitarias.
 | `encode_frame(opcode: u16, payload: &[u8]) -> Vec<u8>` | `pub fn` | Construye un frame binario para enviar al gateway. |
 | `translate_packet(packet: &DecodedPacket, session_phase: SessionPhase) -> Result<ClientCommand, TranslateError>` | `pub fn` | Traduce paquete usando adaptador por defecto (`legacy_v382`). |
 | `translate_packet_for_version(packet: &DecodedPacket, session_phase: SessionPhase, version: ProtocolVersion) -> Result<ClientCommand, TranslateError>` | `pub fn` | Traduce paquete a `ClientCommand` segun version de protocolo y valida fase de sesion. |
+| `translate_server_packet(packet: &DecodedPacket) -> Result<ServerMessage, ServerTranslateError>` | `pub fn` | Traduce paquetes server->client usando la matriz legacy por defecto. |
+| `translate_server_packet_for_version(packet: &DecodedPacket, version: ProtocolVersion) -> Result<ServerMessage, ServerTranslateError>` | `pub fn` | Traduce paquetes server->client con adaptador de version. |
 | `split_frames(buffer: &mut BytesMut) -> Vec<Vec<u8>>` | `pub fn` | Extrae todos los frames completos disponibles desde un buffer incremental TCP. |
 
-## 4) Metodos de `TokenBucketRateLimiter`
+## 4) Funciones publicas de codec wire
+
+| funcion | visibilidad | descripcion |
+|---|---|---|
+| `parse_wire_error_code(raw: u16) -> WireErrorCode` | `pub fn` | Mapea codigos wire-level a enum tipado de errores legacy. |
+| `obfuscate_wire_payload(payload: &[u8], seed: u8) -> Vec<u8>` | `pub fn` | Aplica obfuscacion simetrica XOR por stream. |
+| `deobfuscate_wire_payload(payload: &[u8], seed: u8) -> Vec<u8>` | `pub fn` | Revierte obfuscacion XOR por stream. |
+| `compress_wire_payload(payload: &[u8]) -> Vec<u8>` | `pub fn` | Comprime payload con RLE wire-safe (escape `0xFF`). |
+| `decompress_wire_payload(payload: &[u8], max_output: usize) -> Result<Vec<u8>, WireCodecError>` | `pub fn` | Descomprime payload RLE y valida limites. |
+| `encode_wire_frame(opcode: u16, payload: &[u8], options: WireCodecOptions) -> Vec<u8>` | `pub fn` | Encapsula frame aplicando compresion/obfuscacion segun opciones. |
+| `decode_wire_frame(frame: &[u8], max_payload: usize, options: WireCodecOptions) -> Result<DecodedPacket, WireDecodeError>` | `pub fn` | Decodifica frame y luego aplica deobfuscacion/descompresion wire. |
+
+## 5) Metodos de `TokenBucketRateLimiter`
 
 | funcion | visibilidad | descripcion |
 |---|---|---|
@@ -35,7 +49,7 @@ incluyendo funciones de produccion, helpers internos y pruebas unitarias.
 | `TokenBucketRateLimiter::try_acquire(&mut self, cost: u32) -> bool` | `pub fn` | Intenta consumir tokens; retorna `true` si permite la operacion. |
 | `TokenBucketRateLimiter::refill(&mut self)` | `fn` | Recalcula tokens disponibles segun tiempo transcurrido. |
 
-## 5) Helpers internos de parseo
+## 6) Helpers internos de parseo
 
 | funcion | visibilidad | descripcion |
 |---|---|---|
@@ -46,7 +60,7 @@ incluyendo funciones de produccion, helpers internos y pruebas unitarias.
 | `parse_whisper_payload(payload: &[u8]) -> Result<(String, String), TranslateError>` | `fn` | Parsea whisper (`to_character`, `message`) separado por byte NUL. |
 | `bytes_to_clean_string(input: &[u8], max: usize) -> Result<String, TranslateError>` | `fn` | Convierte bytes UTF-8 a string limpia, no vacia y con largo acotado. |
 
-## 6) Funciones de prueba (`#[cfg(test)]`)
+## 7) Funciones de prueba (`#[cfg(test)]`)
 
 | funcion | descripcion |
 |---|---|
@@ -55,3 +69,6 @@ incluyendo funciones de produccion, helpers internos y pruebas unitarias.
 | `token_bucket_blocks_when_exhausted()` | Verifica bloqueo al agotar tokens del limiter. |
 | `translate_character_delete_command()` | Verifica traduccion de opcode `character_delete` con UUID. |
 | `translate_with_protocol_version_adapter()` | Verifica adaptador de version para `heartbeat` en `modern_v400`. |
+| `wire_codec_roundtrip_with_compression_and_obfuscation()` | Verifica roundtrip wire con compresion + obfuscacion. |
+| `translate_server_login_result()` | Verifica decoder tipado server->client para login result. |
+| `parse_wire_error_code_unknown()` | Verifica fallback de codigos wire desconocidos. |

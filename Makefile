@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: fmt clippy test check baseline baseline-full soak soak-record soak-trend slo-check canary-check tag-release observability-up docs-html docs-html-clean release-check backup-db restore-db restore-db-last install-admin-sudoers run-gateway run-auth run-world run-map run-chat run-admin run-jobs migrate up down seed-admin smoke smoke-full replay-fixture replay-fixture-merge replay-fixture-split replay-modern-seed replay-modern-no-client replay-modern-no-client-check replay-opcode-report replay-real-gap replay-real-todo replay-real-playbook replay-real-checklist replay-real-refresh replay-real-parity-check replay-capture-pipeline replay-capture-ingest capture-replay replay-fixture-synth
+.PHONY: fmt clippy test check baseline baseline-full verify-stack-green soak soak-record soak-trend slo-check canary-check tag-release observability-up docs-html docs-html-clean release-check backup-db restore-db restore-db-last install-admin-sudoers run-gateway run-auth run-world run-map run-chat run-admin run-jobs migrate up down seed-admin smoke smoke-full replay-fixture replay-fixture-merge replay-fixture-split replay-modern-seed replay-modern-no-client replay-modern-no-client-check replay-opcode-report replay-real-gap replay-real-todo replay-real-playbook replay-real-checklist replay-real-refresh replay-real-parity-check replay-capture-parity-check replay-capture-pipeline replay-capture-ingest capture-replay replay-fixture-synth
 
 fmt:
 	cargo fmt --all
@@ -19,6 +19,9 @@ baseline:
 
 baseline-full:
 	RUN_FULL_STACK=1 bash deploy/scripts/verify_baseline.sh
+
+verify-stack-green:
+	bash deploy/scripts/verify_stack_green.sh
 
 soak:
 	python3 deploy/scripts/soak_test.py --iterations $${SOAK_ITERATIONS:-3} --delay-seconds $${SOAK_DELAY_SECONDS:-3}
@@ -188,13 +191,15 @@ replay-real-todo:
 	python3 deploy/scripts/replay_capture_todo.py \
 		--input docs/protocol_opcode_matrix.json \
 		--output docs/protocol_capture_todo.md \
-		--protocols "$${REAL_PARITY_PROTOCOLS:-legacy_v382,modern_v400}"
+		--protocols "$${REAL_PARITY_PROTOCOLS:-legacy_v382,modern_v400}" \
+		--source-mode "$${REAL_PARITY_SOURCE_MODE:-capture_only}"
 
 replay-real-playbook:
 	python3 deploy/scripts/generate_protocol_capture_playbook.py \
 		--input docs/protocol_opcode_matrix.json \
 		--output docs/protocol_capture_playbook.md \
-		--protocols "$${REAL_PARITY_PROTOCOLS:-legacy_v382,modern_v400}"
+		--protocols "$${REAL_PARITY_PROTOCOLS:-legacy_v382,modern_v400}" \
+		--source-mode "$${REAL_PARITY_SOURCE_MODE:-capture_only}"
 
 replay-real-checklist:
 	python3 deploy/scripts/generate_net_parity_checklist.py \
@@ -209,7 +214,17 @@ replay-real-parity-check:
 		--markdown-output docs/protocol_opcode_matrix.md \
 		--json-output docs/protocol_opcode_matrix.json \
 		--fail-on-real-gaps \
-		--real-required-protocols "$${REAL_PARITY_PROTOCOLS:-legacy_v382,modern_v400}"
+		--real-required-protocols "$${REAL_PARITY_PROTOCOLS:-legacy_v382,modern_v400}" \
+		--real-origin-mode "$${REAL_PARITY_SOURCE_MODE:-manual_capture}"
+
+replay-capture-parity-check:
+	python3 deploy/scripts/replay_opcode_report.py \
+		--input crates/net/tests/fixtures/replay_cases.json \
+		--markdown-output docs/protocol_opcode_matrix.md \
+		--json-output docs/protocol_opcode_matrix.json \
+		--fail-on-real-gaps \
+		--real-required-protocols "$${REAL_PARITY_PROTOCOLS:-legacy_v382,modern_v400}" \
+		--real-origin-mode capture_only
 
 replay-capture-pipeline:
 	bash deploy/scripts/replay_capture_pipeline.sh \

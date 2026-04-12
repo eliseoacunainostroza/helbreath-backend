@@ -507,6 +507,90 @@ impl MapInstance {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::time::{timeout, Duration, Instant};
+
+    async fn wait_for_outbound_match<F>(
+        rx: &mut mpsc::Receiver<OutboundEvent>,
+        max_wait: Duration,
+        mut predicate: F,
+    ) -> bool
+    where
+        F: FnMut(&OutboundEvent) -> bool,
+    {
+        let deadline = Instant::now() + max_wait;
+        loop {
+            let now = Instant::now();
+            if now >= deadline {
+                return false;
+            }
+            let remaining = deadline.saturating_duration_since(now);
+            match timeout(remaining, rx.recv()).await {
+                Ok(Some(event)) => {
+                    if predicate(&event) {
+                        return true;
+                    }
+                }
+                Ok(None) => return false,
+                Err(_) => return false,
+            }
+        }
+    }
+
+    async fn wait_for_persist_match<F>(
+        rx: &mut mpsc::Receiver<PersistOp>,
+        max_wait: Duration,
+        mut predicate: F,
+    ) -> bool
+    where
+        F: FnMut(&PersistOp) -> bool,
+    {
+        let deadline = Instant::now() + max_wait;
+        loop {
+            let now = Instant::now();
+            if now >= deadline {
+                return false;
+            }
+            let remaining = deadline.saturating_duration_since(now);
+            match timeout(remaining, rx.recv()).await {
+                Ok(Some(op)) => {
+                    if predicate(&op) {
+                        return true;
+                    }
+                }
+                Ok(None) => return false,
+                Err(_) => return false,
+            }
+        }
+    }
+
+    async fn wait_for_inventory_changes(
+        rx: &mut mpsc::Receiver<PersistOp>,
+        max_wait: Duration,
+        expected_changes: u32,
+    ) -> u32 {
+        let deadline = Instant::now() + max_wait;
+        let mut changes = 0_u32;
+
+        loop {
+            if changes >= expected_changes {
+                return changes;
+            }
+            let now = Instant::now();
+            if now >= deadline {
+                return changes;
+            }
+            let remaining = deadline.saturating_duration_since(now);
+            match timeout(remaining, rx.recv()).await {
+                Ok(Some(op)) => {
+                    if matches!(op, PersistOp::SaveInventoryChange { .. }) {
+                        changes += 1;
+                    }
+                }
+                Ok(None) => return changes,
+                Err(_) => return changes,
+            }
+        }
+    }
 
     #[tokio::test]
     async fn map_instance_consumes_commands() {
@@ -595,24 +679,17 @@ mod tests {
         .await
         .expect("attack");
 
-        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
-
-        let mut saw_combat = false;
-        while let Ok(evt) = out_rx.try_recv() {
-            if matches!(evt, OutboundEvent::CombatResult { .. }) {
-                saw_combat = true;
-                break;
-            }
-        }
+        let saw_combat = wait_for_outbound_match(&mut out_rx, Duration::from_millis(1500), |evt| {
+            matches!(evt, OutboundEvent::CombatResult { .. })
+        })
+        .await;
         assert!(saw_combat, "expected at least one combat outbound event");
 
-        let mut saw_combat_persist = false;
-        while let Ok(op) = persist_rx.try_recv() {
-            if matches!(op, PersistOp::SaveCombatLog { .. }) {
-                saw_combat_persist = true;
-                break;
-            }
-        }
+        let saw_combat_persist =
+            wait_for_persist_match(&mut persist_rx, Duration::from_millis(1500), |op| {
+                matches!(op, PersistOp::SaveCombatLog { .. })
+            })
+            .await;
         assert!(saw_combat_persist, "expected combat persist op");
 
         task.abort();
@@ -663,14 +740,8 @@ mod tests {
         .await
         .expect("drop item");
 
-        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
-
-        let mut changes = 0_u32;
-        while let Ok(op) = persist_rx.try_recv() {
-            if matches!(op, PersistOp::SaveInventoryChange { .. }) {
-                changes += 1;
-            }
-        }
+        let changes =
+            wait_for_inventory_changes(&mut persist_rx, Duration::from_millis(1500), 2).await;
         assert!(changes >= 2, "expected at least two inventory persist ops");
 
         task.abort();

@@ -33,6 +33,11 @@ Opcional (cuando ya no haya casos seed/synthetic pendientes para protocolo objet
 make replay-real-parity-check
 # o solo modern durante rollout:
 REAL_PARITY_PROTOCOLS=modern_v400 make replay-real-parity-check
+
+# cuando quieras exigir cliente real (origen capture):
+make replay-capture-parity-check
+# o solo modern en captura:
+REAL_PARITY_PROTOCOLS=modern_v400 make replay-capture-parity-check
 ```
 
 ## 3) Crear tag de version (annotated)
